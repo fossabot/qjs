@@ -1,0 +1,176 @@
+# extra_qjs.cmake
+
+# Define the macros first
+macro(add_qjs_libc_if_needed target)
+    if(NOT QJS_BUILD_LIBC)
+        target_sources(${target} PRIVATE quickjs-libc.c)
+    endif()
+endmacro()
+macro(add_static_if_needed target)
+    if(QJS_BUILD_CLI_STATIC OR MINGW)
+        target_link_options(${target} PRIVATE -static)
+        if(MINGW)
+            target_link_options(${target} PRIVATE -static-libgcc)
+        endif()
+    endif()
+endmacro()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    add_compile_definitions(
+        _WASI_EMULATED_PROCESS_CLOCKS
+        _WASI_EMULATED_SIGNAL
+    )
+    add_link_options(
+        -lwasi-emulated-process-clocks
+        -lwasi-emulated-signal
+    )
+endif()
+
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
+endif()
+
+# Now we can use the macros
+add_executable(qjsextra
+    gen/repl.c
+    gen/standalone.c
+    ../qjsextra/eval.c
+    ../qjsextra/helpers.c
+    ../qjsextra/function.c
+    ../qjsextra/qjs.c
+)
+
+add_qjs_libc_if_needed(qjsextra)
+add_static_if_needed(qjsextra)
+
+set_target_properties(qjsextra PROPERTIES
+    OUTPUT_NAME "qjsextra"
+)
+
+# Add the exported symbols specifically to the qjs target
+target_link_options(qjsextra PRIVATE 
+    "LINKER:--export=js_std_await"
+    "LINKER:--export=New_QJS"
+    "LINKER:--export=New_QJSContext"
+    "LINKER:--export=QJS_FreeValue"
+    "LINKER:--export=QJS_Free"
+    "LINKER:--export=QJS_CloneValue"
+    "LINKER:--export=QJS_GetContext"
+    "LINKER:--export=JS_FreeContext"
+    "LINKER:--export=JS_NewDate"
+    "LINKER:--export=JS_NewNull"
+    "LINKER:--export=JS_NewUndefined"
+    "LINKER:--export=JS_NewUninitialized"
+    "LINKER:--export=QJS_NewString"
+    "LINKER:--export=QJS_ToCString"
+    "LINKER:--export=JS_FreeCString"
+    "LINKER:--export=QJS_ToInt64"
+    "LINKER:--export=QJS_ToInt32"
+    "LINKER:--export=QJS_ToUint32"
+    "LINKER:--export=QJS_ToFloat64"
+    "LINKER:--export=JS_GetGlobalObject"
+    "LINKER:--export=JS_HasException"
+    "LINKER:--export=JS_GetException"
+    "LINKER:--export=JS_GetPropertyStr"
+    "LINKER:--export=QJS_IsUndefined"
+    "LINKER:--export=QJS_IsException"
+    "LINKER:--export=QJS_UpdateStackTop"
+    "LINKER:--export=JS_SetPropertyStr"
+    # "LINKER:--export=JS_Call"
+    "LINKER:--export=JS_CallConstructor"
+    "LINKER:--export=QJS_CreateProxyFunction"
+    "LINKER:--export=QJS_NewInt64"
+    "LINKER:--export=QJS_NewUint32"
+    "LINKER:--export=QJS_NewInt32"
+    "LINKER:--export=JS_NewError"
+    "LINKER:--export=JS_Throw"
+    "LINKER:--export=JS_FreeValue"
+    "LINKER:--export=JS_NewAtom"
+    "LINKER:--export=JS_AtomToValue"
+    "LINKER:--export=JS_FreeAtom"
+    "LINKER:--export=JS_NewObject"
+    "LINKER:--export=JS_ValueToAtom"
+    "LINKER:--export=JS_GetProperty"
+    "LINKER:--export=JS_SetProperty"
+    "LINKER:--export=JS_HasProperty"
+    "LINKER:--export=JS_NewAtomUInt32"
+    "LINKER:--export=JS_DeleteProperty"
+    "LINKER:--export=JS_ToObject"
+    "LINKER:--export=JS_ToBool"
+    "LINKER:--export=JS_NewArrayBufferCopy"
+    "LINKER:--export=JS_NewArray"
+    "LINKER:--export=JS_SetPropertyUint32"
+    "LINKER:--export=QJS_ThrowSyntaxError"
+    "LINKER:--export=QJS_ThrowTypeError"
+    "LINKER:--export=QJS_ThrowReferenceError"
+    "LINKER:--export=QJS_ThrowRangeError"
+    "LINKER:--export=QJS_ThrowInternalError"
+
+    "LINKER:--export=QJS_ModuleLoader"
+    "LINKER:--export=QJS_Load"
+    "LINKER:--export=QJS_Eval"
+    "LINKER:--export=QJS_Compile"
+    "LINKER:--export=QJS_Compile2"
+    "LINKER:--export=QJS_CreateEvalOption"
+    "LINKER:--export=QJS_CloneValue"
+    "LINKER:--export=QJS_AtomToCString"
+    "LINKER:--export=QJS_IsPromise"
+    "LINKER:--export=QJS_IsObject"
+    "LINKER:--export=JS_IsDate"
+    "LINKER:--export=QJS_IsFunction"
+    "LINKER:--export=QJS_IsError"
+    "LINKER:--export=QJS_IsNumber"
+    "LINKER:--export=QJS_IsBigInt"
+    "LINKER:--export=QJS_IsBool"
+    "LINKER:--export=QJS_IsNull"
+    "LINKER:--export=QJS_IsUninitialized"
+    "LINKER:--export=QJS_IsString"
+    "LINKER:--export=QJS_IsSymbol"
+    "LINKER:--export=QJS_IsArray"
+    "LINKER:--export=QJS_IsConstructor"
+    "LINKER:--export=QJS_IsInstanceOf"
+    "LINKER:--export=QJS_GetOwnPropertyNames"
+    "LINKER:--export=QJS_ParseJSON"
+    "LINKER:--export=QJS_NewBool"
+    "LINKER:--export=QJS_NewBigInt64"
+    "LINKER:--export=QJS_NewBigUint64"
+    "LINKER:--export=QJS_NewFloat64"
+    "LINKER:--export=QJS_GetArrayBuffer"
+    "LINKER:--export=QJS_JSONStringify"
+    "LINKER:--export=QJS_ToInt32"
+    "LINKER:--export=QJS_ToEpochTime"
+    "LINKER:--export=QJS_SetPropertyUint32"
+    "LINKER:--export=QJS_GetPropertyUint32"
+    "LINKER:--export=QJS_NewAtomUInt32"
+    "LINKER:--export=QJS_NewArrayBufferCopy"
+    "LINKER:--export=QJS_Call"
+    "LINKER:--export=QJS_GetRuntime"
+    "LINKER:--export=QJS_Panic"
+
+    "LINKER:--export=malloc"
+    "LINKER:--export=free"
+    "LINKER:--export=initialize"
+)
+
+# Override the visibility for our target so that our exported symbols have default visibility.
+target_compile_options(qjsextra PRIVATE "-fvisibility=default")
+# Alternatively, you can use:
+# set_target_properties(qjsextra PROPERTIES C_VISIBILITY_PRESET default)
+
+target_compile_definitions(qjsextra PRIVATE ${qjs_defines})
+
+# Link the qjsextra library (if needed, you can still wrap it with --whole-archive if required)
+target_link_libraries(qjsextra qjs)
+
+if(NOT WIN32)
+    set_target_properties(qjsextra PROPERTIES ENABLE_EXPORTS TRUE)
+endif()
+
+if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
+    find_package(mimalloc REQUIRED)
+    if(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
+        target_link_libraries(qjsextra mimalloc-static)
+    else()
+        target_link_libraries(qjsextra mimalloc)
+    endif()
+endif()
