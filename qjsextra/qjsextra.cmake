@@ -1,6 +1,3 @@
-# extra_qjs.cmake
-
-# Define the macros first
 macro(add_qjs_libc_if_needed target)
     if(NOT QJS_BUILD_LIBC)
         target_sources(${target} PRIVATE quickjs-libc.c)
@@ -30,7 +27,6 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
 endif()
 
-# Now we can use the macros
 add_executable(qjsextra
     gen/repl.c
     gen/standalone.c
@@ -47,7 +43,6 @@ set_target_properties(qjsextra PROPERTIES
     OUTPUT_NAME "qjsextra"
 )
 
-# Add the exported symbols specifically to the qjs target
 target_link_options(qjsextra PRIVATE 
     "LINKER:--export=js_std_await"
     "LINKER:--export=New_QJS"
@@ -152,14 +147,10 @@ target_link_options(qjsextra PRIVATE
     "LINKER:--export=initialize"
 )
 
-# Override the visibility for our target so that our exported symbols have default visibility.
 target_compile_options(qjsextra PRIVATE "-fvisibility=default")
-# Alternatively, you can use:
-# set_target_properties(qjsextra PROPERTIES C_VISIBILITY_PRESET default)
 
 target_compile_definitions(qjsextra PRIVATE ${qjs_defines})
 
-# Link the qjsextra library (if needed, you can still wrap it with --whole-archive if required)
 target_link_libraries(qjsextra qjs)
 
 if(NOT WIN32)
