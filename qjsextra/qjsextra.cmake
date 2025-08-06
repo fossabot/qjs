@@ -30,10 +30,10 @@ endif()
 add_executable(qjsextra
     gen/repl.c
     gen/standalone.c
-    ../qjsextra/eval.c
-    ../qjsextra/helpers.c
-    ../qjsextra/function.c
-    ../qjsextra/qjs.c
+    ../eval.c
+    ../helpers.c
+    ../function.c
+    ../qjs.c
 )
 
 add_qjs_libc_if_needed(qjsextra)
