@@ -1,8 +1,22 @@
 # QJS - JavaScript in Go with QuickJS and Wazero
 
-[![Go Version](https://img.shields.io/badge/go-1.23.0+-blue.svg)](https://golang.org/doc/devel/release.html)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![GoDoc](https://godoc.org/github.com/fastschema/qjs?status.svg)](https://pkg.go.dev/github.com/fastschema/qjs)
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/fastschema/qjs#section-readme" target="_blank" rel="noopener">
+    <img src="https://img.shields.io/badge/go.dev-reference-blue?logo=go&logoColor=white" alt="Go.Dev reference" />
+  </a>
+  <a href="https://goreportcard.com/report/github.com/fastschema/qjs" target="_blank" rel="noopener">
+    <img src="https://goreportcard.com/badge/github.com/fastschema/qjs" alt="go report card" />
+  </a>
+  <a href="https://codecov.io/gh/fastschema/qjs" target="_blank" rel="noopener">
+    <img src="https://codecov.io/gh/fastschema/qjs/graph/badge.svg?token=yluqOtL5z0" alt="codecov" />
+  </a>
+  <a href="https://github.com/fastschema/qjs/actions" target="_blank" rel="noopener">
+    <img src="https://github.com/fastschema/qjs/actions/workflows/ci.yml/badge.svg" alt="test status" />
+  </a>
+  <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener">
+    <img src="https://img.shields.io/badge/license-MIT-brightgreen.svg" alt="MIT license" />
+  </a>
+</p>
 
 QJS is a CGO-Free, modern, secure JavaScript runtime for Go applications, built on the powerful QuickJS engine and Wazero WebAssembly runtime. It allows you to run JavaScript code safely and efficiently, with full support for ES6+ features, async/await, and Go-JS interoperability.
 
