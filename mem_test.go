@@ -274,7 +274,7 @@ func TestMem_ReadWrite(t *testing.T) {
 				memSize := mem.Size()
 
 				// Use a large pointer value that's definitely out of bounds
-				largePtr := memSize + 1000
+				var largePtr uint32
 				if memSize > 1000 {
 					largePtr = memSize + 1000
 				} else {
