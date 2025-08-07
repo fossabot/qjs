@@ -326,7 +326,7 @@ func (tracker *Tracker[T]) addStructFieldsToObject(
 	rval reflect.Value,
 ) error {
 	// Embedded structs processed first to enable field overriding
-	for i := 0; i < rtype.NumField(); i++ {
+	for i := range rtype.NumField() {
 		field := rtype.Field(i)
 
 		if !field.IsExported() {
@@ -345,7 +345,7 @@ func (tracker *Tracker[T]) addStructFieldsToObject(
 	}
 
 	// Regular fields can override embedded fields
-	for i := 0; i < rtype.NumField(); i++ {
+	for i := range rtype.NumField() {
 		field := rtype.Field(i)
 		if !field.IsExported() {
 			continue
@@ -387,7 +387,7 @@ func (tracker *Tracker[T]) addStructMethodsToObject(
 	rtype reflect.Type,
 	rval reflect.Value,
 ) error {
-	for i := 0; i < rtype.NumMethod(); i++ {
+	for i := range rtype.NumMethod() {
 		method := rtype.Method(i)
 		methodValue := rval.Method(i)
 
@@ -414,7 +414,7 @@ func (tracker *Tracker[T]) arrayLikeToJS(
 ) (*Value, error) {
 	arr := c.NewArray()
 
-	for i := 0; i < rval.Len(); i++ {
+	for i := range rval.Len() {
 		elem := rval.Index(i)
 
 		jsElem, err := tracker.ToJSValue(c, elem.Interface())

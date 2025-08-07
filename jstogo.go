@@ -609,7 +609,7 @@ func convertArgsToJS(
 		}
 
 		// Convert variadic arguments
-		for i := 0; i < variadicSlice.Len(); i++ {
+		for i := range variadicSlice.Len() {
 			elem := variadicSlice.Index(i)
 			if err := convertArg(elem.Interface(), numFixedArgs+i); err != nil {
 				return nil, err

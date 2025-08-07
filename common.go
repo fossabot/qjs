@@ -150,7 +150,7 @@ func (fm *FieldMapper) processFields(
 	seen map[string]bool,
 	fieldMap map[string]FieldPath,
 ) {
-	for i := 0; i < structType.NumField(); i++ {
+	for i := range structType.NumField() {
 		field := structType.Field(i)
 		fieldIndices := append(append([]int{}, indexPrefix...), i)
 

@@ -2,7 +2,7 @@ version: '2'
 
 run:
   concurrency: 4
-  go: '1.21.0'
+  go: '1.22.0'
 
 linters:
   default: all
@@ -24,6 +24,7 @@ linters:
     - nonamedreturns
     - unparam
     - varnamelen
+    - wsl
   settings:
     dupl:
       threshold: 100
