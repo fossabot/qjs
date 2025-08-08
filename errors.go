@@ -111,7 +111,7 @@ func newInvalidJsInputErr(kind string, input *Value) (err error) {
 		detail = fmt.Sprintf("(JSONStringify failed: %v), (.String()) %s", err, input.String())
 	}
 
-	return fmt.Errorf("DONE_expected JS %s, got %s=%s", kind, input.Type(), detail)
+	return fmt.Errorf("expected JS %s, got %s=%s", kind, input.Type(), detail)
 }
 
 func newJsStringifyErr(kind string, err error) error {

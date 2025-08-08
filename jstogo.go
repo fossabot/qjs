@@ -400,7 +400,7 @@ func setFieldWithJSONUnmarshaler(
 	}
 
 	if err := unmarshaler.UnmarshalJSON([]byte(jsonStr)); err != nil {
-		return fmt.Errorf("DONE_cannot unmarshal json: %w, %s=%s", err, fieldInfo.field.Name, jsonStr)
+		return fmt.Errorf("cannot unmarshal json: %w, %s=%s", err, fieldInfo.field.Name, jsonStr)
 	}
 
 	fieldValue.Set(unmarshalerValue)
@@ -473,7 +473,7 @@ func jsObjectToGo[T any](
 	}
 
 	if err = json.Unmarshal([]byte(jsonString), tempPtr); err != nil {
-		err = fmt.Errorf("DONE_can not unmarshal json: %w, input=%s", err, jsonString)
+		err = fmt.Errorf("can not unmarshal json: %w, input=%s", err, jsonString)
 
 		return processTempValue("JsObjectToGo", nil, err, sample)
 	}
@@ -546,7 +546,7 @@ func createJsFunctionHandler(
 	jsResult, err := ctx.Invoke(input, ctx.Global(), jsArgs...)
 	if err != nil {
 		results[len(results)-1] = reflect.ValueOf(
-			fmt.Errorf("DONE_JS function execution failed: %w", err),
+			fmt.Errorf("JS function execution failed: %w", err),
 		)
 
 		return results
@@ -644,7 +644,7 @@ func handleJsFunctionResult(
 	goResult, err := jsValueToGo[any](tracker, jsResult)
 	if err != nil {
 		results[len(results)-1] = reflect.ValueOf(
-			fmt.Errorf("DONE_failed to convert JS function result '%s' to Go: %w", jsResult.Type(), err),
+			fmt.Errorf("failed to convert JS function result '%s' to Go: %w", jsResult.Type(), err),
 		)
 
 		return results
@@ -656,7 +656,7 @@ func handleJsFunctionResult(
 	targetType := fnType.Out(0)
 	if !goResultValue.CanConvert(targetType) {
 		results[len(results)-1] = reflect.ValueOf(
-			fmt.Errorf("DONE_failed to convert JS function return value from %T (%v) to %s", goResult, goResult, targetType),
+			fmt.Errorf("failed to convert JS function return value from %T (%v) to %s", goResult, goResult, targetType),
 		)
 
 		return results

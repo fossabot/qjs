@@ -306,7 +306,7 @@ func (v *Value) Invoke(fname string, args ...*Value) (*Value, error) {
 	defer fn.Free()
 
 	if !fn.IsFunction() {
-		return v.NewUndefined(), fmt.Errorf("DONE_JS property '%s' is not a function", fname)
+		return v.NewUndefined(), fmt.Errorf("JS property '%s' is not a function", fname)
 	}
 
 	argc, argvPtr := createJsCallArgs(v.context, args...)
@@ -560,7 +560,7 @@ func (v *Value) JSONStringify() (_ string, err error) {
 	defer func() {
 		r := AnyToError(recover())
 		if r != nil {
-			err = fmt.Errorf("DONE_failed to stringify JS value: %w", r)
+			err = fmt.Errorf("failed to stringify JS value: %w", r)
 		}
 	}()
 

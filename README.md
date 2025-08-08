@@ -7,8 +7,8 @@
   <a href="https://goreportcard.com/report/github.com/fastschema/qjs" target="_blank" rel="noopener">
     <img src="https://goreportcard.com/badge/github.com/fastschema/qjs" alt="go report card" />
   </a>
-  <a href="https://codecov.io/gh/fastschema/qjs" target="_blank" rel="noopener">
-    <img src="https://codecov.io/gh/fastschema/qjs/graph/badge.svg?token=yluqOtL5z0" alt="codecov" />
+  <a href="https://codecov.io/gh/fastschema/qjs/branch/master" >
+    <img src="https://codecov.io/gh/fastschema/qjs/branch/master/graph/badge.svg?token=yluqOtL5z0"/>
   </a>
   <a href="https://github.com/fastschema/qjs/actions" target="_blank" rel="noopener">
     <img src="https://github.com/fastschema/qjs/actions/workflows/ci.yml/badge.svg" alt="test status" />
@@ -34,43 +34,416 @@ QJS is a CGO-Free, modern, secure JavaScript runtime for Go applications, built 
 
 ## Example Usage
 
+
+### Basic Execution
+
+```go
+rt, err := qjs.New()
+if err != nil {
+    panic(err)
+}
+
+defer rt.Close()
+ctx := rt.Context()
+
+result, err := ctx.Eval("test.js", qjs.Code(`
+    const person = {
+        name: "Alice",
+        age: 30,
+        city: "New York"
+    };
+
+    const info = Object.keys(person).map(key =>
+        key + ": " + person[key]
+    ).join(", ");
+
+    ({ person: person, info: info });
+`))
+if err != nil {
+    log.Fatal("Eval error:", err)
+}
+defer result.Free()
+// Output: name: Alice, age: 30, city: New York
+log.Println(result.GetPropertyStr("info").String())
+// Output: Alice
+log.Println(result.GetPropertyStr("person").GetPropertyStr("name").String())
+// Output: 30
+log.Println(result.GetPropertyStr("person").GetPropertyStr("age").Int32())
+```
+
+### Go function binding
+
+```go
+ctx.SetFunc("goFunction", func(this *qjs.This) (*qjs.Value, error) {
+    return this.Context().NewString("Hello from Go!"), nil
+})
+
+result, err := ctx.Eval("test.js", qjs.Code(`
+    const message = goFunction();
+    message;
+`))
+if err != nil {
+    panic(err)
+}
+defer result.Free()
+
+// Output: Hello from Go!
+log.Println(result.String())
+```
+
+### Async operations
+
+**Awaiting a promise**
+
+```go
+ctx.SetAsyncFunc("asyncFunction", func(this *qjs.This) {
+    go func() {
+        time.Sleep(100 * time.Millisecond)
+        result := this.Context().NewString("Async result from Go!")
+        this.Promise().Resolve(result)
+    }()
+})
+
+result, err := ctx.Eval("test.js", qjs.Code(`
+    async function main() {
+        const result = await asyncFunction();
+        return result;
+    }
+    main()
+`))
+
+if err != nil {
+    log.Fatal("Eval error:", err)
+}
+defer result.Free()
+
+// Wait for the promise to resolve
+result.Await()
+// Output: Async result from Go!
+log.Println(result.String())
+```
+
+**Top level await**
+
+```go
+result, err := ctx.Eval("test.js", qjs.Code(`
+    async function main() {
+        const result = await asyncFunction();
+        return result;
+    }
+    await main()
+`), qjs.FlagAsync())
+
+if err != nil {
+    log.Fatal("Eval error:", err)
+}
+
+defer result.Free()
+log.Println(result.String())
+```
+
+### Call JS function from Go
+
+```go
+// Call JS function from Go
+result, err := ctx.Eval("test.js", qjs.Code(`
+    function add(a, b) {
+        return a + b;
+    }
+
+    function errorFunc() {
+        throw new Error("test error");
+    }
+
+    ({
+        addFunc: add,
+        errorFunc: errorFunc
+    });
+`))
+
+if err != nil {
+    panic(err)
+}
+defer result.Free()
+
+jsAddFunc := result.GetPropertyStr("addFunc")
+defer jsAddFunc.Free()
+
+goAddFunc, err := qjs.JsFuncToGo[func(int, int) (int, error)](jsAddFunc)
+if err != nil {
+    panic(err)
+}
+
+total, err := goAddFunc(1, 2)
+if err != nil {
+    panic(err)
+}
+
+// Output: 3
+log.Println(total)
+
+jsErrorFunc := result.GetPropertyStr("errorFunc")
+defer jsErrorFunc.Free()
+
+goErrorFunc, err := qjs.JsFuncToGo[func() (any, error)](jsErrorFunc)
+if err != nil {
+    panic(err)
+}
+
+_, err = goErrorFunc()
+if err != nil {
+    // Output:
+    // JS function execution failed: Error: test error
+    // 	at errorFunc (test.js:7:14)
+    log.Println(err.Error())
+}
+```
+
+### ES Modules
+
+```go
+// Load a utility module
+if _, err = ctx.Load("math-utils.js", qjs.Code(`
+    export function add(a, b) {
+        return a + b;
+    }
+
+    export function multiply(a, b) {
+        return a * b;
+    }
+
+    export function power(base, exponent) {
+        return Math.pow(base, exponent);
+    }
+
+    export const PI = 3.14159;
+    export const E = 2.71828;
+    export default {
+        add,
+        multiply,
+        power,
+        PI,
+        E
+    };
+`)); err != nil {
+    panic(err)
+}
+
+// Use the module
+result, err := ctx.Eval("use-math.js", qjs.Code(`
+    import mathUtils, { add, multiply, power, PI } from 'math-utils.js';
+
+    const calculations = {
+        addition: add(10, 20),
+        multiplication: multiply(6, 7),
+        power: power(2, 8),
+        circleArea: PI * power(5, 2),
+        defaultAdd: mathUtils.add(10, 20)
+    };
+
+    export default calculations;
+`), qjs.TypeModule())
+
+if err != nil {
+    log.Fatal("Module eval error:", err)
+}
+
+// Output:
+// Addition: 30
+// Multiplication: 42
+// Power: 256
+// Circle Area: 78.54
+// Default Add: 30
+fmt.Printf("Addition: %d\n", result.GetPropertyStr("addition").Int32())
+fmt.Printf("Multiplication: %.0f\n", result.GetPropertyStr("multiplication").Float64())
+fmt.Printf("Power: %.0f\n", result.GetPropertyStr("power").Float64())
+fmt.Printf("Circle Area: %.2f\n", result.GetPropertyStr("circleArea").Float64())
+fmt.Printf("Default Add: %.d\n", result.GetPropertyStr("defaultAdd").Int32())
+result.Free()
+```
+
+### Bytecode Compilation
+
+```go
+script := `
+    function fibonacci(n) {
+        if (n <= 1) return n;
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
+
+    function factorial(n) {
+        return n <= 1 ? 1 : n * factorial(n - 1);
+    }
+
+    const result = {
+        fib10: fibonacci(10),
+        fact5: factorial(5),
+        timestamp: Date.now()
+    };
+
+    result;
+`
+
+// Compile the script to bytecode
+bytecode, err := ctx.Compile("math-functions.js", qjs.Code(script))
+if err != nil {
+    log.Fatal("Compilation error:", err)
+}
+
+fmt.Printf("Bytecode size: %d bytes\n", len(bytecode))
+
+// Execute the compiled bytecode
+result, err := ctx.Eval("compiled-math.js", qjs.Bytecode(bytecode))
+if err != nil {
+    log.Fatal("Bytecode execution error:", err)
+}
+
+fmt.Printf("Fibonacci(10): %d\n", result.GetPropertyStr("fib10").Int32())
+fmt.Printf("Factorial(5): %d\n", result.GetPropertyStr("fact5").Int32())
+result.Free()
+```
+
+### GO-JS Conversion
+
 ```go
 package main
 
 import (
-    "fmt"
-    "github.com/fastschema/qjs"
+	"fmt"
+
+	"github.com/fastschema/qjs"
 )
 
+type Post struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Author User   `json:"author"`
+}
+
+type User struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+}
+
+// Method on User struct
+func (u User) GetDisplayName() string {
+	return fmt.Sprintf("%s (%d)", u.Name, u.Age)
+}
+
+func (u User) IsAdult() bool {
+	return u.Age >= 18
+}
+
 func main() {
-    // Create secure JavaScript runtime
-    rt, _ := qjs.New()
-    defer rt.Close()
-    
-    // Execute modern JavaScript with confidence
-    result, _ := rt.Eval("demo.js", qjs.Code(`
-        const users = [
-            { name: "Alice", age: 30 },
-            { name: "Bob", age: 25 }
-        ];
-        
-        const adults = users
-            .filter(u => u.age >= 18)
-            .map(u => u.name.toUpperCase());
-            
-        ({ count: adults.length, adults })
-    `))
-    defer result.Free()
-    
-    fmt.Printf("Found %d adults: %v\n", 
-        result.GetPropertyStr("count").Int32(),
-        result.GetPropertyStr("adults"))
+	rt, err := qjs.New()
+	if err != nil {
+		panic(err)
+	}
+	defer rt.Close()
+	ctx := rt.Context()
+
+	ctx.Global().SetPropertyStr("goInt", ctx.NewInt32(55))
+	ctx.Global().SetPropertyStr("goString", ctx.NewString("Hello, World!"))
+	jsUser, err := qjs.ToJSValue(ctx, User{ID: 1, Name: "Alice", Age: 25})
+	if err != nil {
+		panic(err)
+	}
+	ctx.Global().SetPropertyStr("goUser", jsUser)
+
+	result, err := ctx.Eval("test.js", qjs.Code(`
+		const post = {
+			id: goInt,
+			name: goString,
+			author: goUser
+		};
+		post;
+	`))
+	if err != nil {
+		panic(err)
+	}
+	defer result.Free()
+
+	goPost, err := qjs.JsValueToGo[Post](result)
+	if err != nil {
+		panic(err)
+	}
+
+	// Output:
+	// Post ID: 55
+	// Post Name: Hello, World!
+	// Author ID: 1
+	// Author Name: Alice
+	// Author Age: 25
+	fmt.Printf("Post ID: %d\n", goPost.ID)
+	fmt.Printf("Post Name: %s\n", goPost.Name)
+	fmt.Printf("Author ID: %d\n", goPost.Author.ID)
+	fmt.Printf("Author Name: %s\n", goPost.Author.Name)
+	fmt.Printf("Author Age: %d\n", goPost.Author.Age)
 }
 ```
 
-**Output:**
-```
-Found 2 adults: ["ALICE", "BOB"]
+### Pool
+
+```go
+package main
+
+import (
+	"log"
+	"sync"
+
+	"github.com/fastschema/qjs"
+)
+
+func main() {
+	setupFunc := func(rt *qjs.Runtime) error {
+		ctx := rt.Context()
+		ctx.Eval("setup.js", qjs.Code(`
+			function getMessage(workerId, taskId) {
+				return "Hello from pooled runtime: " + workerId + "-" + taskId;
+			}
+		`))
+		return nil
+	}
+	// Create a pool with 3 runtimes
+	pool := qjs.NewPool(3, &qjs.Option{}, setupFunc)
+	numWorkers := 5
+	numTasks := 3
+	var wg sync.WaitGroup
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < numTasks; j++ {
+				rt, err := pool.Get()
+				if err != nil {
+					panic(err)
+				}
+				defer pool.Put(rt)
+				ctx := rt.Context()
+				workerIdValue := ctx.NewInt32(int32(workerID))
+				taskIdValue := ctx.NewInt32(int32(j))
+				ctx.Global().SetPropertyStr("workerID", workerIdValue)
+				ctx.Global().SetPropertyStr("taskID", taskIdValue)
+
+				// Use the runtime
+				result, err := ctx.Eval("pool-test.js", qjs.Code(`
+					({
+						message: getMessage(workerID, taskID),
+						timestamp: Date.now(),
+					});
+				`))
+				if err != nil {
+					panic(err)
+				}
+				defer result.Free()
+				log.Println(result.GetPropertyStr("message").String())
+			}
+		}(i)
+	}
+	wg.Wait()
+}
 ```
 
 ## Installation
@@ -84,7 +457,7 @@ go get github.com/fastschema/qjs
 import "github.com/fastschema/qjs"
 ```
 
-**Compatible with Go 1.23.0+**
+**Compatible with Go 1.22.0+**
 
 ## Architecture
 
@@ -98,109 +471,6 @@ import "github.com/fastschema/qjs"
        │                    │                     │
    Structured           Sandboxed              ES2020+
    Go Types               Memory              Modern JS
-```
-
-## Core Concepts: Go - JavaScript Made Simple
-
-### 1. Basic JavaScript Execution
-
-```go
-rt, err := qjs.New()
-if err != nil {
-    log.Fatal(err)
-}
-defer rt.Close()
-
-// Execute any modern JavaScript
-result, err := rt.Eval("math.js", qjs.Code(`
-    Math.sqrt(16) + Math.pow(2, 3)
-`))
-defer result.Free()
-
-fmt.Println("Result:", result.Float64()) // Output: 12
-```
-
-### 2. Exposing Go Functions to JavaScript
-
-```go
-ctx := rt.Context()
-
-// Register a Go function
-ctx.SetFunc("greet", func(this *qjs.This) (*qjs.Value, error) {
-    args := this.Args()
-    if len(args) == 0 {
-        return this.Context().NewString("Hello, World!"), nil
-    }
-    name := args[0].String()
-    return this.Context().NewString("Hello, " + name + "!"), nil
-})
-
-// Call it from JavaScript
-result, _ := rt.Eval("greeting.js", qjs.Code(`greet("Alice")`))
-fmt.Println(result.String()) // Output: Hello, Alice!
-```
-
-### 3. Working with Complex Data
-
-```go
-// Go struct to JavaScript object
-type User struct {
-    Name string `json:"name"`
-    Age  int    `json:"age"`
-}
-
-user := User{Name: "Bob", Age: 30}
-userJS, _ := qjs.ToJSValue(ctx, user)
-
-ctx.Global().SetPropertyStr("user", userJS)
-
-result, _ := rt.Eval("user-demo.js", qjs.Code(`
-    user.name + " is " + user.age + " years old"
-`))
-fmt.Println(result.String()) // Output: Bob is 30 years old
-```
-
-## Advanced Features
-
-### Async/Await Support
-
-```go
-// Register async Go function
-ctx.SetAsyncFunc("fetchData", func(this *qjs.This) (*qjs.Value, error) {
-    // Simulate async operation
-    go func() {
-        time.Sleep(100 * time.Millisecond)
-        this.Promise().Resolve(this.Context().NewString("data loaded"))
-    }()
-    return this.Promise(), nil
-})
-
-// Use in async JavaScript
-result, _ := rt.Eval("async.js", qjs.Code(`
-    async function main() {
-        const data = await fetchData();
-        return "Got: " + data;
-    }
-    main()
-`), qjs.FlagAsync())
-```
-
-### ES6 Modules
-
-```go
-// Load module without executing
-rt.Load("math-utils.js", qjs.Code(`
-    export function add(a, b) { return a + b; }
-    export function multiply(a, b) { return a * b; }
-`))
-
-// Use module in another script
-result, _ := rt.Eval("calculator.js", qjs.Code(`
-    import { add, multiply } from 'math-utils.js';
-    add(5, multiply(3, 4))
-`), qjs.TypeModule())
-
-fmt.Println(result.Int32()) // Output: 17
 ```
 
 ## API Reference
@@ -220,13 +490,13 @@ fmt.Println(result.Int32()) // Output: 17
 // Runtime Management
 rt, err := qjs.New(options...)           // Create runtime
 rt.Close()                               // Cleanup runtime
-rt.Eval(filename, code, flags...)        // Execute JavaScript
+ctx.Eval(filename, code, flags...)        // Execute JavaScript
 rt.Load(filename, code)                  // Load module
 rt.Compile(filename, code)               // Compile to bytecode
 ...
 
 // Context Operations  
-ctx := rt.Context()                      // Get context
+ctx := ctx                      // Get context
 ctx.Global()                             // Access global object
 ctx.SetFunc(name, fn)                    // Bind Go function
 ctx.SetAsyncFunc(name, fn)               // Bind async function
@@ -282,14 +552,14 @@ type Option struct {
 
 ```go
 // Correct pattern
-result, err := rt.Eval("script.js", code)
+result, err := ctx.Eval("script.js", code)
 if err != nil {
     return err
 }
 defer result.Free() // Always free values
 
 // Wrong - will cause memory leaks
-result, _ := rt.Eval("script.js", code)
+result, _ := ctx.Eval("script.js", code)
 // Missing result.Free()
 ```
 
