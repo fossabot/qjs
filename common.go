@@ -429,7 +429,7 @@ func (ac *JsArrayToGoConverter[T]) convertToArray(jsArray *Array, jsLen int64) (
 	goArrayValue := reflect.New(ac.targetType).Elem()
 
 	if jsLen > int64(goArrayLen) {
-		return ac.sample, fmt.Errorf("DONE_JS array/set length (%d) exceeds Go array length (%d)", jsLen, goArrayLen)
+		return ac.sample, fmt.Errorf("JS array/set length (%d) exceeds Go array length (%d)", jsLen, goArrayLen)
 	}
 
 	for i := range jsLen {
@@ -474,7 +474,7 @@ func (ac *JsArrayToGoConverter[T]) convertViaJSON(jsArray *Array) (T, error) {
 
 	temp := reflect.New(ac.targetType).Interface()
 	if err = json.Unmarshal([]byte(jsonString), temp); err != nil {
-		return ac.sample, fmt.Errorf("DONE_can not unmarshal json: %w, input=%s", err, jsonString)
+		return ac.sample, fmt.Errorf("can not unmarshal json: %w, input=%s", err, jsonString)
 	}
 
 	arrayT, _ := reflect.ValueOf(temp).Elem().Interface().(T)
@@ -563,7 +563,7 @@ func IsTypedArray(input *Value) bool {
 // processTempValue validates if temp is a valid result for the given T type.
 func processTempValue[T any](prefix string, temp any, err error, samples ...T) (v T, _ error) {
 	if err != nil {
-		return v, fmt.Errorf("DONE_[%s] %w", prefix, err)
+		return v, fmt.Errorf("[%s] %w", prefix, err)
 	}
 
 	// Handle interface{} target types by accepting any converted value
@@ -685,7 +685,7 @@ func StringToNumeric(s string, targetType reflect.Type) (any, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("DONE_cannot convert JS string %q to %s", s, targetType.String())
+	return nil, fmt.Errorf("cannot convert JS string %q to %s", s, targetType.String())
 }
 
 func createGoObjectTarget[T any](input ObjectOrMap, samples ...T) (

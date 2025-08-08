@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestContext(t *testing.T) (*qjs.Runtime, *qjs.Context) {
+func setupTestContext(_ *testing.T) (*qjs.Runtime, *qjs.Context) {
 	runtime := must(qjs.New())
 	ctx := runtime.Context()
-	t.Cleanup(runtime.Close)
+	// t.Cleanup(runtime.Close)
 	return runtime, ctx
 }
 

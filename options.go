@@ -215,7 +215,7 @@ func getRuntimeOption(registry *ProxyRegistry, options ...*Option) (option *Opti
 
 	if option.CWD == "" {
 		if option.CWD, err = os.Getwd(); err != nil {
-			return nil, fmt.Errorf("DONE_cannot get current working directory: %w", err)
+			return nil, fmt.Errorf("cannot get current working directory: %w", err)
 		}
 	}
 

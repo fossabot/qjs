@@ -13,7 +13,7 @@ func FuncToJS(c *Context, v any) (_ *Value, err error) {
 
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("DONE_[FuncToJS] %w", err)
+			err = fmt.Errorf("[FuncToJS] %w", err)
 		}
 	}()
 
@@ -66,11 +66,11 @@ func VerifyGoFunc(fnType reflect.Type) error {
 	numOut := fnType.NumOut()
 
 	if numOut > MaxGoFuncReturnValues {
-		return fmt.Errorf("DONE_expected 0-2 return values, got '%s'", signature)
+		return fmt.Errorf("expected 0-2 return values, got '%s'", signature)
 	}
 
 	if numOut == MaxGoFuncReturnValues && !IsImplementError(fnType.Out(1)) {
-		return fmt.Errorf("DONE_expected second return to be error, got '%s'", signature)
+		return fmt.Errorf("expected second return to be error, got '%s'", signature)
 	}
 
 	if numOut >= 1 {
@@ -83,7 +83,7 @@ func VerifyGoFunc(fnType reflect.Type) error {
 	for i := range fnType.NumIn() {
 		err := IsConvertibleToJs(fnType.In(i), make(map[reflect.Type]bool), "func param")
 		if err != nil {
-			return fmt.Errorf("DONE_parameter %d error: %w", i, err)
+			return fmt.Errorf("parameter %d error: %w", i, err)
 		}
 	}
 
