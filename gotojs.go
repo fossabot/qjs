@@ -47,8 +47,10 @@ func (tracker *Tracker[T]) StructToJSObjectValue(
 		// Determine the struct type and value for field processing:
 		// - pointer to struct: dereference for field processing.
 		// - direct struct: use as-is.
-		var structType reflect.Type
-		var structVal reflect.Value
+		var (
+			structType reflect.Type
+			structVal  reflect.Value
+		)
 
 		if rtype.Kind() == reflect.Ptr {
 			structType = rtype.Elem()
@@ -410,7 +412,6 @@ func (tracker *Tracker[T]) addStructMethodsToObject(
 	rtype reflect.Type,
 	rval reflect.Value,
 ) error {
-
 	for i := range rtype.NumMethod() {
 		method := rtype.Method(i)
 		methodValue := rval.Method(i)
