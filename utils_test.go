@@ -41,10 +41,6 @@ func TestIsConvertibleToJs(t *testing.T) {
 			assert.Error(t, err, "Channel should not be convertible")
 			assert.Contains(t, err.Error(), "channel", "Error should mention channel")
 		})
-
-		// Note: Testing unsafe.Pointer directly is tricky in unit tests since (*int)(nil)
-		// is treated as *int, not unsafe.Pointer. The unsafe.Pointer case is handled
-		// in the switch statement but requires actual unsafe.Pointer type to trigger.
 	})
 
 	t.Run("StructWithFields", func(t *testing.T) {
@@ -61,7 +57,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 		t.Run("UnexportedFieldsIgnored", func(t *testing.T) {
 			type TestStruct struct {
 				PublicField  string
-				privateField string // Should be ignored
+				privateField string
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -71,7 +67,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 		t.Run("MixedFieldsWithUnsupportedPrivate", func(t *testing.T) {
 			type TestStruct struct {
 				PublicField  string
-				privateField chan int // Unsupported type but private, should be ignored
+				privateField chan int
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -82,9 +78,9 @@ func TestIsConvertibleToJs(t *testing.T) {
 	t.Run("StructWithJSONTags", func(t *testing.T) {
 		t.Run("JSONOmitTag", func(t *testing.T) {
 			type TestStruct struct {
-				PublicField      string
-				OmittedField     chan int `json:"-"` // Should be ignored due to json:"-"
-				AnotherField     int
+				PublicField  string
+				OmittedField chan int `json:"-"`
+				AnotherField int
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -93,7 +89,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("JSONRenameTag", func(t *testing.T) {
 			type TestStruct struct {
-				Field            string `json:"renamed_field"`
+				Field            string   `json:"renamed_field"`
 				UnsupportedField chan int `json:"-"`
 			}
 
@@ -104,7 +100,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 		t.Run("UnsupportedFieldWithoutOmitTag", func(t *testing.T) {
 			type TestStruct struct {
 				PublicField      string
-				UnsupportedField chan int // Should cause error since it's exported and not omitted
+				UnsupportedField chan int
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -114,10 +110,10 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("ComplexJSONTags", func(t *testing.T) {
 			type TestStruct struct {
-				Field1           string    `json:"field1,omitempty"`
-				Field2           int       `json:"field2"`
-				OmittedField     chan int  `json:"-"`
-				AnotherOmitted   chan bool `json:"-,"`
+				Field1         string    `json:"field1,omitempty"`
+				Field2         int       `json:"field2"`
+				OmittedField   chan int  `json:"-"`
+				AnotherOmitted chan bool `json:"-,"`
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -151,7 +147,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("InvalidNested", func(t *testing.T) {
 			type Inner struct {
-				BadField chan int // Unsupported
+				BadField chan int
 			}
 			type Outer struct {
 				Inner Inner
@@ -175,12 +171,52 @@ func TestIsConvertibleToJs(t *testing.T) {
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(Outer{}), make(map[reflect.Type]bool), "test")
 			assert.NoError(t, err, "Nested struct with omitted unsupported fields should be convertible")
 		})
+
+		t.Run("EmbeddedPointerStruct", func(t *testing.T) {
+			type Inner struct {
+				GoodField string
+			}
+			type Outer struct {
+				*Inner
+				Name string
+			}
+
+			err := qjs.IsConvertibleToJs(reflect.TypeOf(Outer{}), make(map[reflect.Type]bool), "test")
+			assert.NoError(t, err, "Struct with embedded pointer to struct should be convertible")
+		})
+
+		t.Run("EmbeddedPointerWithUnsupportedField", func(t *testing.T) {
+			type Inner struct {
+				BadField chan int
+			}
+			type Outer struct {
+				*Inner
+				Name string
+			}
+
+			err := qjs.IsConvertibleToJs(reflect.TypeOf(Outer{}), make(map[reflect.Type]bool), "test")
+			assert.Error(t, err, "Struct with embedded pointer containing unsupported fields should not be convertible")
+		})
+
+		t.Run("EmbeddedPointerWithOmittedField", func(t *testing.T) {
+			type Inner struct {
+				GoodField string
+				BadField  chan int `json:"-"`
+			}
+			type Outer struct {
+				*Inner
+				Name string
+			}
+
+			err := qjs.IsConvertibleToJs(reflect.TypeOf(Outer{}), make(map[reflect.Type]bool), "test")
+			assert.NoError(t, err, "Struct with embedded pointer containing omitted unsupported fields should be convertible")
+		})
 	})
 
 	t.Run("Pointers", func(t *testing.T) {
 		type TestStruct struct {
-			Field            string
-			OmittedField     chan int `json:"-"`
+			Field        string
+			OmittedField chan int `json:"-"`
 		}
 
 		err := qjs.IsConvertibleToJs(reflect.TypeOf(&TestStruct{}), make(map[reflect.Type]bool), "test")
