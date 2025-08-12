@@ -32,6 +32,22 @@ func (s StructWithMethods) GetDoubleValue() int {
 	return s.Value * 2
 }
 
+type StructWithPointerMethods struct {
+	Value int
+}
+
+func (s StructWithPointerMethods) GetValue() int {
+	return s.Value
+}
+
+func (s *StructWithPointerMethods) SetValue(v int) {
+	s.Value = v
+}
+
+func (s *StructWithPointerMethods) GetValuePlusOne() int {
+	return s.Value + 1
+}
+
 type StructWithJSONTags struct {
 	PublicField    string `json:"public_field"`
 	RenamedField   int    `json:"renamed"`
@@ -51,7 +67,6 @@ type CircularStruct struct {
 	Self *CircularStruct
 }
 
-// StructWithInvalidMethod has a method that FuncToJS cannot convert
 type StructWithInvalidMethod struct {
 	Value int
 }
@@ -582,6 +597,37 @@ func TestJSValueConversion(t *testing.T) {
 				getDoubleValueProp := obj.GetPropertyStr("GetDoubleValue")
 				defer getDoubleValueProp.Free()
 				assert.True(t, getDoubleValueProp.IsFunction(), "GetDoubleValue should be function")
+			})
+		})
+
+		t.Run("StructWithPointerMethods", func(t *testing.T) {
+			// Adding another level of indirection to ensure pointer resolution works correctly
+			s1 := &StructWithPointerMethods{Value: 20}
+			s2 := &s1
+			testValueConversion(t, ctx, s2, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				// Check field
+				valueProp := obj.GetPropertyStr("Value")
+				defer valueProp.Free()
+				assert.True(t, valueProp.IsNumber(), "Value field should be number")
+				assert.Equal(t, int64(20), valueProp.Int64())
+
+				// Check value receiver method
+				getValueProp := obj.GetPropertyStr("GetValue")
+				defer getValueProp.Free()
+				assert.True(t, getValueProp.IsFunction(), "GetValue should be function")
+
+				// Check pointer receiver methods
+				setValueProp := obj.GetPropertyStr("SetValue")
+				defer setValueProp.Free()
+				assert.True(t, setValueProp.IsFunction(), "SetValue should be function")
+
+				getValuePlusOneProp := obj.GetPropertyStr("GetValuePlusOne")
+				defer getValuePlusOneProp.Free()
+				assert.True(t, getValuePlusOneProp.IsFunction(), "GetValuePlusOne should be function")
 			})
 		})
 

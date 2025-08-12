@@ -44,11 +44,27 @@ func (tracker *Tracker[T]) StructToJSObjectValue(
 	rval reflect.Value,
 ) (*Value, error) {
 	return withJSObject(c, func(obj *Value) error {
-		err := tracker.addStructFieldsToObject(c, obj, rtype, rval)
+		// Determine the struct type and value for field processing:
+		// - pointer to struct: dereference for field processing.
+		// - direct struct: use as-is.
+		var structType reflect.Type
+		var structVal reflect.Value
+
+		if rtype.Kind() == reflect.Ptr {
+			structType = rtype.Elem()
+			structVal = rval.Elem()
+		} else {
+			structType = rtype
+			structVal = rval
+		}
+
+		err := tracker.addStructFieldsToObject(c, obj, structType, structVal)
 		if err != nil {
 			return err
 		}
 
+		// For methods, use the original type and value
+		// to preserve pointer receiver methods
 		return tracker.addStructMethodsToObject(c, obj, rtype, rval)
 	})
 }
@@ -248,12 +264,19 @@ func (tracker *Tracker[T]) convertReflectValue(c *Context, v any) (*Value, error
 			return c.NewNull(), nil
 		}
 
-		// Track pointer address for circular reference detection
+		// Track pointer address for circular reference detection.
 		var addr any = (rval.Pointer())
 
 		addrT, _ := addr.(T)
 		if err := ct.trackPtr(tracker, addrT); err != nil {
 			return nil, newGoToJsErr(GetGoTypeName(reflect.TypeOf(v)), err, "recursive pointer")
+		}
+
+		// If pointer points to a struct,
+		// preserve the pointer type for method resolution.
+		elemType := rtype.Elem()
+		if elemType.Kind() == reflect.Struct {
+			return tracker.StructToJSObjectValue(c, rtype, rval)
 		}
 
 		return tracker.ToJSValue(c, rval.Elem().Interface())
@@ -387,6 +410,7 @@ func (tracker *Tracker[T]) addStructMethodsToObject(
 	rtype reflect.Type,
 	rval reflect.Value,
 ) error {
+
 	for i := range rtype.NumMethod() {
 		method := rtype.Method(i)
 		methodValue := rval.Method(i)

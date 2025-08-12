@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"os"
 	"runtime/debug"
 	"sync"
 
@@ -136,8 +135,8 @@ func New(options ...*Option) (runtime *Runtime, err error) {
 			WithSysNanotime().
 			WithSysNanosleep().
 			WithFSConfig(fsConfig).
-			WithStdout(os.Stdout).
-			WithStderr(os.Stderr),
+			WithStdout(option.Stdout).
+			WithStderr(option.Stderr),
 	); err != nil {
 		return nil, fmt.Errorf("failed to instantiate module: %w", err)
 	}
