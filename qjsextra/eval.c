@@ -62,14 +62,7 @@ static JSValue buf_empty_error(JSContext *ctx, uint8_t *buf, bool is_file, QJSEv
 static JSValue load_buf(JSContext *ctx, QJSEvalOptions opts, int flags, bool eval)
 {
     bool is_file = input_is_file(opts);
-    // bool has_filename = opts.filename && opts.filename[0] != '\0';
-    // bool invalid_file = is_file && (!has_filename || !file_exists(opts.filename));
-
-    // if (invalid_file)
-    //     return JS_ThrowReferenceError(ctx, "file does not exist: %s", opts.filename);
-
     size_t buf_len = 0;
-    // char *filename;
     uint8_t *buf = detect_buf(ctx, &opts, &buf_len, is_file);
     if (buf == NULL)
         return buf_empty_error(ctx, buf, is_file, &opts);
@@ -93,17 +86,91 @@ static JSValue load_buf(JSContext *ctx, QJSEvalOptions opts, int flags, bool eva
     return module_val;
 }
 
-// static JSValue qjs_eval_global(JSContext *ctx, QJSEvalOptions opts)
-// {
-//     return load_buf(ctx, opts, opts.eval_flags, true);
-// }
+/* Create a JSON module with the parsed JSON as default export */
+static JSModuleDef *js_module_loader_json(JSContext *ctx, const char *module_name)
+{
+    JSModuleDef *m;
+    size_t buf_len;
+    uint8_t *buf;
+    JSValue json_val, func_val;
 
-/* Module loader with support for appending common suffixes */
+    buf = js_load_file(ctx, &buf_len, module_name);
+    if (!buf)
+    {
+        JS_ThrowReferenceError(ctx, "could not load JSON module filename '%s'", module_name);
+        return NULL;
+    }
+
+    /* Parse the JSON content */
+    json_val = JS_ParseJSON(ctx, (char *)buf, buf_len, module_name);
+    js_free(ctx, buf);
+    if (JS_IsException(json_val))
+        return NULL;
+
+    /* Create a synthetic module source that exports the JSON */
+    const char *module_source_template =
+        "const __json_data__ = %s;\n"
+        "export default __json_data__;\n";
+
+    /* Convert JSON to string */
+    JSValue json_str = JS_JSONStringify(ctx, json_val, JS_NULL, JS_NULL);
+    if (JS_IsException(json_str))
+    {
+        JS_FreeValue(ctx, json_val);
+        return NULL;
+    }
+
+    const char *json_string = JS_ToCString(ctx, json_str);
+    if (!json_string)
+    {
+        JS_FreeValue(ctx, json_val);
+        JS_FreeValue(ctx, json_str);
+        return NULL;
+    }
+
+    /* Create the module source */
+    size_t source_len = strlen(module_source_template) + strlen(json_string) + 1;
+    char *module_source = malloc(source_len);
+    snprintf(module_source, source_len, module_source_template, json_string);
+
+    /* Compile the module */
+    func_val = JS_Eval(ctx, module_source, strlen(module_source), module_name,
+                       JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+
+    /* Cleanup */
+    free(module_source);
+    JS_FreeCString(ctx, json_string);
+    JS_FreeValue(ctx, json_str);
+    JS_FreeValue(ctx, json_val);
+
+    if (JS_IsException(func_val))
+        return NULL;
+
+    /* Set import.meta */
+    if (js_module_set_import_meta(ctx, func_val, true, false) < 0)
+    {
+        JS_FreeValue(ctx, func_val);
+        return NULL;
+    }
+
+    /* Return the compiled module */
+    m = JS_VALUE_GET_PTR(func_val);
+    JS_FreeValue(ctx, func_val);
+    return m;
+}
+
+/* Module loader with support for appending common suffixes and JSON modules */
 JSModuleDef *QJS_ModuleLoader(JSContext *ctx, const char *module_name, void *opaque)
 {
     module_name = detect_entry_point((char *)module_name);
     if (!module_name)
         return NULL;
+
+    /* Check if it's a JSON module */
+    if (js__has_suffix(module_name, ".json"))
+    {
+        return js_module_loader_json(ctx, module_name);
+    }
 
     JSModuleDef *mod = js_module_loader(ctx, module_name, opaque);
     return mod;
@@ -258,7 +325,7 @@ unsigned char *QJS_Compile(JSContext *c, QJSEvalOptions opts, size_t *outSize)
 /**
  * Compiles code (as a module or global script) to bytecode and returns a packed uint64_t value
  * containing both the bytecode's memory address (high 32 bits) and length (low 32 bits).
- * 
+ *
  * Returns NULL on error.
  * NOTE: The caller must free both the returned uint64_t pointer and the bytecode memory it points to.
  */
@@ -277,7 +344,7 @@ uint64_t *QJS_Compile2(JSContext *ctx, QJSEvalOptions opts)
         free(bytecode);
         return NULL; // Allocation failure
     }
-    
+
     // Store the address of the bytecode in the high 32 bits and the length in the low 32 bits
     *result = ((uint64_t)(uintptr_t)bytecode << 32) | (uint32_t)bytecode_len;
     return result;
@@ -286,11 +353,12 @@ uint64_t *QJS_Compile2(JSContext *ctx, QJSEvalOptions opts)
 QJSEvalOptions *QJS_CreateEvalOption(void *buf, uint8_t *bytecode_buf, size_t bytecode_len, char *filename, int eval_flags)
 {
     QJSEvalOptions *opts = (QJSEvalOptions *)malloc(sizeof(QJSEvalOptions));
-    if (opts == NULL) {
+    if (opts == NULL)
+    {
         printf("Error allocating memory for QJSEvalOptions\n");
         return NULL;
     }
-    
+
     opts->buf = buf;
     opts->bytecode_buf = bytecode_buf;
     opts->bytecode_len = bytecode_len;
