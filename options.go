@@ -3,6 +3,7 @@ package qjs
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -39,6 +40,8 @@ type Option struct {
 	GCThreshold       int
 	QuickJSWasmBytes  []byte
 	ProxyFunction     any
+	Stdout            io.Writer
+	Stderr            io.Writer
 }
 
 // EvalOption configures JavaScript evaluation behavior in QuickJS context.
@@ -225,6 +228,14 @@ func getRuntimeOption(registry *ProxyRegistry, options ...*Option) (option *Opti
 
 	if option.ProxyFunction == nil {
 		option.ProxyFunction = createFuncProxyWithRegistry(registry)
+	}
+
+	if option.Stdout == nil {
+		option.Stdout = os.Stdout
+	}
+
+	if option.Stderr == nil {
+		option.Stderr = os.Stderr
 	}
 
 	return option, nil

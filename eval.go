@@ -33,13 +33,17 @@ func eval(c *Context, file string, flags ...EvalOptionFunc) (*Value, error) {
 	return normalizeJsValue(c, result)
 }
 
-func compile(c *Context, file string, flags ...EvalOptionFunc) ([]byte, error) {
+func compile(c *Context, file string, flags ...EvalOptionFunc) (_ []byte, err error) {
 	option := createEvalOption(c, file, flags...)
 
 	evalOptions := option.Handle()
 	defer option.Free()
 
 	result := c.Call("QJS_Compile2", c.Raw(), evalOptions)
+	if result, err = normalizeJsValue(c, result); err != nil {
+		return nil, err
+	}
+
 	defer result.Free()
 
 	bytecodeBytes := result.Bytes()

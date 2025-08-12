@@ -268,8 +268,10 @@ func (v *Value) GetPropertyStr(name string) *Value {
 
 // SetPropertyStr sets the value of the property with the given name.
 func (v *Value) SetPropertyStr(name string, val *Value) {
-	nameVal := v.context.NewStringHandle(name)
-	v.Call("JS_SetPropertyStr", v.Ctx(), v.Raw(), nameVal.Raw(), val.Raw())
+	if val != nil {
+		nameVal := v.context.NewStringHandle(name)
+		v.Call("JS_SetPropertyStr", v.Ctx(), v.Raw(), nameVal.Raw(), val.Raw())
+	}
 }
 
 // HasPropertyIndex returns true if the value has the property with the given index.

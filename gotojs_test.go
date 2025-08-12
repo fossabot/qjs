@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -32,6 +33,22 @@ func (s StructWithMethods) GetDoubleValue() int {
 	return s.Value * 2
 }
 
+type StructWithPointerMethods struct {
+	Value int
+}
+
+func (s StructWithPointerMethods) GetValue() int {
+	return s.Value
+}
+
+func (s *StructWithPointerMethods) SetValue(v int) {
+	s.Value = v
+}
+
+func (s *StructWithPointerMethods) GetValuePlusOne() int {
+	return s.Value + 1
+}
+
 type StructWithJSONTags struct {
 	PublicField    string `json:"public_field"`
 	RenamedField   int    `json:"renamed"`
@@ -46,12 +63,78 @@ type EmbeddedStructTest struct {
 	NewField string
 }
 
+type EmbeddedPointerStructTest struct {
+	*EmbeddedStruct
+	ExtraField string
+}
+
+type EmbeddedStructWithUnsupportedField struct {
+	Name     string
+	BadField chan int
+}
+
+type EmbeddedPointerWithErrorTest struct {
+	*EmbeddedStructWithUnsupportedField
+	ExtraField string
+}
+
+type CustomInt int
+type CustomUint uint
+type CustomUint64 uint64
+type CustomFloat32 float32
+type CustomBool bool
+type CustomString string
+type CustomIntPtr int
+
+func (c CustomInt) GetValue() int {
+	return int(c)
+}
+
+func (c CustomString) String() string {
+	return string(c)
+}
+
+type StructWithEmbeddedPrimitive struct {
+	CustomInt
+	CustomUint
+	CustomUint64
+	CustomFloat32
+	CustomBool
+	CustomString
+	*CustomIntPtr
+	ExtraField string
+}
+
+type AliasInt = int
+type AliasString = string
+type DefInt int
+type DefString string
+
+func (d DefInt) GetValue() int {
+	return int(d)
+}
+
+func (d DefString) Upper() string {
+	return strings.ToUpper(string(d))
+}
+
+type StructWithAliasEmbedded struct {
+	AliasInt
+	AliasString
+	ExtraField string
+}
+
+type StructWithDefEmbedded struct {
+	DefInt
+	DefString
+	ExtraField string
+}
+
 type CircularStruct struct {
 	Name string
 	Self *CircularStruct
 }
 
-// StructWithInvalidMethod has a method that FuncToJS cannot convert
 type StructWithInvalidMethod struct {
 	Value int
 }
@@ -585,6 +668,37 @@ func TestJSValueConversion(t *testing.T) {
 			})
 		})
 
+		t.Run("StructWithPointerMethods", func(t *testing.T) {
+			// Adding another level of indirection to ensure pointer resolution works correctly
+			s1 := &StructWithPointerMethods{Value: 20}
+			s2 := &s1
+			testValueConversion(t, ctx, s2, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				// Check field
+				valueProp := obj.GetPropertyStr("Value")
+				defer valueProp.Free()
+				assert.True(t, valueProp.IsNumber(), "Value field should be number")
+				assert.Equal(t, int64(20), valueProp.Int64())
+
+				// Check value receiver method
+				getValueProp := obj.GetPropertyStr("GetValue")
+				defer getValueProp.Free()
+				assert.True(t, getValueProp.IsFunction(), "GetValue should be function")
+
+				// Check pointer receiver methods
+				setValueProp := obj.GetPropertyStr("SetValue")
+				defer setValueProp.Free()
+				assert.True(t, setValueProp.IsFunction(), "SetValue should be function")
+
+				getValuePlusOneProp := obj.GetPropertyStr("GetValuePlusOne")
+				defer getValuePlusOneProp.Free()
+				assert.True(t, getValuePlusOneProp.IsFunction(), "GetValuePlusOne should be function")
+			})
+		})
+
 		t.Run("StructWithJSONTags", func(t *testing.T) {
 			s := StructWithJSONTags{
 				PublicField:    "public",
@@ -650,6 +764,203 @@ func TestJSValueConversion(t *testing.T) {
 				defer newFieldProp.Free()
 				assert.True(t, newFieldProp.IsString(), "New field should be accessible")
 				assert.Equal(t, "new", newFieldProp.String())
+			})
+		})
+
+		t.Run("EmbeddedPointerStruct", func(t *testing.T) {
+			s := EmbeddedPointerStructTest{
+				EmbeddedStruct: &EmbeddedStruct{Name: "pointer_embedded", Age: 30},
+				ExtraField:     "extra",
+			}
+			testValueConversion(t, ctx, s, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				// Check embedded pointer fields are accessible at top level
+				nameProp := obj.GetPropertyStr("Name")
+				defer nameProp.Free()
+				assert.True(t, nameProp.IsString(), "Embedded pointer Name field should be accessible")
+				assert.Equal(t, "pointer_embedded", nameProp.String())
+
+				ageProp := obj.GetPropertyStr("Age")
+				defer ageProp.Free()
+				assert.True(t, ageProp.IsNumber(), "Embedded pointer Age field should be accessible")
+				assert.Equal(t, int64(30), ageProp.Int64())
+
+				// Check extra field
+				extraFieldProp := obj.GetPropertyStr("ExtraField")
+				defer extraFieldProp.Free()
+				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
+				assert.Equal(t, "extra", extraFieldProp.String())
+			})
+		})
+
+		t.Run("EmbeddedPointerStructNil", func(t *testing.T) {
+			s := EmbeddedPointerStructTest{
+				EmbeddedStruct: nil,
+				ExtraField:     "extra_only",
+			}
+			testValueConversion(t, ctx, s, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				// Check that nil embedded pointer fields don't add properties
+				nameProp := obj.GetPropertyStr("Name")
+				defer nameProp.Free()
+				assert.True(t, nameProp.IsUndefined(), "Nil embedded pointer fields should not be accessible")
+
+				ageProp := obj.GetPropertyStr("Age")
+				defer ageProp.Free()
+				assert.True(t, ageProp.IsUndefined(), "Nil embedded pointer fields should not be accessible")
+
+				// Check extra field is still accessible
+				extraFieldProp := obj.GetPropertyStr("ExtraField")
+				defer extraFieldProp.Free()
+				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
+				assert.Equal(t, "extra_only", extraFieldProp.String())
+			})
+		})
+
+		t.Run("EmbeddedPointerStructError", func(t *testing.T) {
+			s := EmbeddedPointerWithErrorTest{
+				EmbeddedStructWithUnsupportedField: &EmbeddedStructWithUnsupportedField{
+					Name:     "test",
+					BadField: make(chan int),
+				},
+				ExtraField: "extra",
+			}
+			testErrorCase(t, ctx, s, "channel")
+		})
+
+		t.Run("EmbeddedPrimitiveTypes", func(t *testing.T) {
+			s := StructWithEmbeddedPrimitive{
+				CustomInt:     42,
+				CustomUint:    100,
+				CustomUint64:  math.MaxUint64,
+				CustomFloat32: 3.14159,
+				CustomBool:    true,
+				CustomString:  "embedded_string",
+				CustomIntPtr:  new(CustomIntPtr),
+				ExtraField:    "extra",
+			}
+			testValueConversion(t, ctx, s, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				customIntProp := obj.GetPropertyStr("CustomInt")
+				defer customIntProp.Free()
+				assert.True(t, customIntProp.IsNumber(), "Embedded CustomInt field should be accessible")
+				assert.Equal(t, int64(42), customIntProp.Int64())
+
+				customUintProp := obj.GetPropertyStr("CustomUint")
+				defer customUintProp.Free()
+				assert.True(t, customUintProp.IsNumber(), "Embedded CustomUint field should be accessible")
+				assert.Equal(t, int64(100), customUintProp.Int64())
+
+				customUint64Prop := obj.GetPropertyStr("CustomUint64")
+				defer customUint64Prop.Free()
+				assert.True(t, customUint64Prop.IsNumber(), "Embedded CustomUint64 field should be accessible")
+				assert.Equal(t, float64(math.MaxUint64), customUint64Prop.Float64())
+
+				customFloat32Prop := obj.GetPropertyStr("CustomFloat32")
+				defer customFloat32Prop.Free()
+				assert.True(t, customFloat32Prop.IsNumber(), "Embedded CustomFloat32 field should be accessible")
+				assert.InDelta(t, 3.14159, customFloat32Prop.Float64(), 0.0001)
+
+				customBoolProp := obj.GetPropertyStr("CustomBool")
+				defer customBoolProp.Free()
+				assert.True(t, customBoolProp.IsBool(), "Embedded CustomBool field should be accessible")
+				assert.True(t, customBoolProp.Bool())
+
+				customStringProp := obj.GetPropertyStr("CustomString")
+				defer customStringProp.Free()
+				assert.True(t, customStringProp.IsString(), "Embedded CustomString field should be accessible")
+				assert.Equal(t, "embedded_string", customStringProp.String())
+
+				getValueProp := obj.GetPropertyStr("GetValue")
+				defer getValueProp.Free()
+				assert.True(t, getValueProp.IsFunction(), "GetValue method should be accessible")
+
+				stringMethodProp := obj.GetPropertyStr("String")
+				defer stringMethodProp.Free()
+				assert.True(t, stringMethodProp.IsFunction(), "String method should be accessible")
+
+				customIntPtrProp := obj.GetPropertyStr("CustomIntPtr")
+				defer customIntPtrProp.Free()
+				assert.True(t, customIntPtrProp.IsNumber(), "Embedded CustomIntPtr field should be accessible")
+				assert.Equal(t, int64(0), customIntPtrProp.Int64())
+
+				extraFieldProp := obj.GetPropertyStr("ExtraField")
+				defer extraFieldProp.Free()
+				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
+				assert.Equal(t, "extra", extraFieldProp.String())
+			})
+		})
+
+		t.Run("EmbeddedTypeAlias", func(t *testing.T) {
+			s := StructWithAliasEmbedded{
+				AliasInt:    100,
+				AliasString: "alias_test",
+				ExtraField:  "extra",
+			}
+			testValueConversion(t, ctx, s, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				aliasIntProp := obj.GetPropertyStr("AliasInt")
+				defer aliasIntProp.Free()
+				assert.True(t, aliasIntProp.IsNumber(), "Embedded AliasInt field should be accessible")
+				assert.Equal(t, int64(100), aliasIntProp.Int64())
+
+				aliasStringProp := obj.GetPropertyStr("AliasString")
+				defer aliasStringProp.Free()
+				assert.True(t, aliasStringProp.IsString(), "Embedded AliasString field should be accessible")
+				assert.Equal(t, "alias_test", aliasStringProp.String())
+
+				extraFieldProp := obj.GetPropertyStr("ExtraField")
+				defer extraFieldProp.Free()
+				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
+				assert.Equal(t, "extra", extraFieldProp.String())
+			})
+		})
+
+		t.Run("EmbeddedTypeDefinition", func(t *testing.T) {
+			s := StructWithDefEmbedded{
+				DefInt:     200,
+				DefString:  "def_test",
+				ExtraField: "extra",
+			}
+			testValueConversion(t, ctx, s, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				defIntProp := obj.GetPropertyStr("DefInt")
+				defer defIntProp.Free()
+				assert.True(t, defIntProp.IsNumber(), "Embedded DefInt field should be accessible")
+				assert.Equal(t, int64(200), defIntProp.Int64())
+
+				defStringProp := obj.GetPropertyStr("DefString")
+				defer defStringProp.Free()
+				assert.True(t, defStringProp.IsString(), "Embedded DefString field should be accessible")
+				assert.Equal(t, "def_test", defStringProp.String())
+
+				getValueProp := obj.GetPropertyStr("GetValue")
+				defer getValueProp.Free()
+				assert.True(t, getValueProp.IsFunction(), "GetValue method should be accessible")
+
+				upperProp := obj.GetPropertyStr("Upper")
+				defer upperProp.Free()
+				assert.True(t, upperProp.IsFunction(), "Upper method should be accessible")
+
+				extraFieldProp := obj.GetPropertyStr("ExtraField")
+				defer extraFieldProp.Free()
+				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
+				assert.Equal(t, "extra", extraFieldProp.String())
 			})
 		})
 

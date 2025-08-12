@@ -44,11 +44,29 @@ func (tracker *Tracker[T]) StructToJSObjectValue(
 	rval reflect.Value,
 ) (*Value, error) {
 	return withJSObject(c, func(obj *Value) error {
-		err := tracker.addStructFieldsToObject(c, obj, rtype, rval)
+		// Determine the struct type and value for field processing:
+		// - pointer to struct: dereference for field processing.
+		// - direct struct: use as-is.
+		var (
+			structType reflect.Type
+			structVal  reflect.Value
+		)
+
+		if rtype.Kind() == reflect.Ptr {
+			structType = rtype.Elem()
+			structVal = rval.Elem()
+		} else {
+			structType = rtype
+			structVal = rval
+		}
+
+		err := tracker.addStructFieldsToObject(c, obj, structType, structVal)
 		if err != nil {
 			return err
 		}
 
+		// For methods, use the original type and value
+		// to preserve pointer receiver methods
 		return tracker.addStructMethodsToObject(c, obj, rtype, rval)
 	})
 }
@@ -248,12 +266,19 @@ func (tracker *Tracker[T]) convertReflectValue(c *Context, v any) (*Value, error
 			return c.NewNull(), nil
 		}
 
-		// Track pointer address for circular reference detection
+		// Track pointer address for circular reference detection.
 		var addr any = (rval.Pointer())
 
 		addrT, _ := addr.(T)
 		if err := ct.trackPtr(tracker, addrT); err != nil {
 			return nil, newGoToJsErr(GetGoTypeName(reflect.TypeOf(v)), err, "recursive pointer")
+		}
+
+		// If pointer points to a struct,
+		// preserve the pointer type for method resolution.
+		elemType := rtype.Elem()
+		if elemType.Kind() == reflect.Struct {
+			return tracker.StructToJSObjectValue(c, rtype, rval)
 		}
 
 		return tracker.ToJSValue(c, rval.Elem().Interface())
@@ -300,6 +325,23 @@ func (tracker *Tracker[T]) convertReflectValue(c *Context, v any) (*Value, error
 		return nil, newGoToJsErr("channel: "+GetGoTypeName(rtype), nil)
 	case reflect.UnsafePointer:
 		return nil, newGoToJsErr(GetGoTypeName(rtype), nil)
+
+	// Handle custom types based on their underlying type.
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return GoNumberToJS(c, rval.Int()), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		uintVal := rval.Uint()
+		if uintVal > math.MaxInt64 {
+			return c.NewFloat64(float64(uintVal)), nil
+		}
+
+		return GoNumberToJS(c, int64(uintVal)), nil
+	case reflect.Float32, reflect.Float64:
+		return GoNumberToJS(c, rval.Float()), nil
+	case reflect.String:
+		return c.NewString(rval.String()), nil
+	case reflect.Bool:
+		return c.NewBool(rval.Bool()), nil
 	}
 
 	return nil, newGoToJsErr(rtype.Name(), nil)
@@ -318,58 +360,115 @@ func withJSObject(c *Context, fn func(*Value) error) (*Value, error) {
 }
 
 // addStructFieldsToObject converts struct fields to JS object properties.
-// Processes embedded structs first, then regular fields to allow overriding.
+// Processes embedded fields first, then regular fields to allow overriding.
 func (tracker *Tracker[T]) addStructFieldsToObject(
 	c *Context,
 	obj *Value,
 	rtype reflect.Type,
 	rval reflect.Value,
 ) error {
-	// Embedded structs processed first to enable field overriding
+	// Process embedded fields first to enable field overriding
+	if err := tracker.processEmbeddedFields(c, obj, rtype, rval); err != nil {
+		return err
+	}
+
+	// Process regular fields (can override embedded fields)
+	return tracker.processRegularFields(c, obj, rtype, rval)
+}
+
+// processEmbeddedFields handles anonymous/embedded fields in structs.
+func (tracker *Tracker[T]) processEmbeddedFields(
+	c *Context,
+	obj *Value,
+	rtype reflect.Type,
+	rval reflect.Value,
+) error {
 	for i := range rtype.NumField() {
 		field := rtype.Field(i)
 
-		if !field.IsExported() {
+		if !field.IsExported() || !field.Anonymous {
 			continue
 		}
 
-		if field.Anonymous {
-			fieldValue := rval.Field(i)
-			if fieldValue.Kind() == reflect.Struct {
-				err := tracker.addStructFieldsToObject(c, obj, field.Type, fieldValue)
-				if err != nil {
-					return err
-				}
-			}
+		if err := tracker.processEmbeddedField(c, obj, field, rval.Field(i)); err != nil {
+			return err
 		}
 	}
 
-	// Regular fields can override embedded fields
+	return nil
+}
+
+// processEmbeddedField handles a single embedded field.
+func (tracker *Tracker[T]) processEmbeddedField(
+	c *Context,
+	obj *Value,
+	field reflect.StructField,
+	fieldValue reflect.Value,
+) error {
+	switch fieldValue.Kind() {
+	case reflect.Struct:
+		return tracker.addStructFieldsToObject(c, obj, field.Type, fieldValue)
+	case reflect.Ptr:
+		return tracker.processEmbeddedPointer(c, obj, field.Name, field.Type, fieldValue)
+	default:
+		return tracker.addEmbeddedPrimitive(c, obj, field.Name, fieldValue)
+	}
+}
+
+// processEmbeddedPointer handles embedded pointer fields.
+func (tracker *Tracker[T]) processEmbeddedPointer(
+	c *Context,
+	obj *Value,
+	fieldName string,
+	fieldType reflect.Type,
+	fieldValue reflect.Value,
+) error {
+	if fieldValue.IsNil() {
+		return nil
+	}
+
+	elem := fieldValue.Elem()
+	if elem.Kind() == reflect.Struct {
+		// Embedded pointer to struct: recursively process struct fields
+		return tracker.addStructFieldsToObject(c, obj, fieldType.Elem(), elem)
+	}
+
+	// Embedded pointer to primitive: add the dereferenced value as field
+	return tracker.addEmbeddedPrimitive(c, obj, fieldName, elem)
+}
+
+// addEmbeddedPrimitive adds an embedded primitive type as a field.
+func (tracker *Tracker[T]) addEmbeddedPrimitive(
+	c *Context,
+	obj *Value,
+	fieldName string,
+	fieldValue reflect.Value,
+) error {
+	prop, err := tracker.ToJSValue(c, fieldValue.Interface())
+	obj.SetPropertyStr(fieldName, prop)
+
+	return err
+}
+
+// processRegularFields handles non-anonymous fields in structs.
+func (tracker *Tracker[T]) processRegularFields(
+	c *Context,
+	obj *Value,
+	rtype reflect.Type,
+	rval reflect.Value,
+) error {
 	for i := range rtype.NumField() {
 		field := rtype.Field(i)
-		if !field.IsExported() {
+		if !field.IsExported() || field.Anonymous {
 			continue
 		}
 
-		if field.Anonymous {
+		fieldName, skip := tracker.getFieldName(field)
+		if skip {
 			continue
 		}
 
-		fieldValue := rval.Field(i)
-		fieldName := field.Name
-
-		if jsonTag := field.Tag.Get("json"); jsonTag != "" {
-			name, _, _ := strings.Cut(jsonTag, ",")
-			if name == "-" {
-				continue
-			}
-
-			if name != "" {
-				fieldName = name
-			}
-		}
-
-		prop, err := tracker.ToJSValue(c, fieldValue.Interface())
+		prop, err := tracker.ToJSValue(c, rval.Field(i).Interface())
 		if err != nil {
 			return err
 		}
@@ -378,6 +477,23 @@ func (tracker *Tracker[T]) addStructFieldsToObject(
 	}
 
 	return nil
+}
+
+// getFieldName determines the field name considering JSON tags.
+func (tracker *Tracker[T]) getFieldName(field reflect.StructField) (string, bool) {
+	fieldName := field.Name
+	if jsonTag := field.Tag.Get("json"); jsonTag != "" {
+		name, _, _ := strings.Cut(jsonTag, ",")
+		if name == "-" {
+			return "", true
+		}
+
+		if name != "" {
+			fieldName = name
+		}
+	}
+
+	return fieldName, false
 }
 
 // addStructMethodsToObject adds exported struct methods as JS functions.
