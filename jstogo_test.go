@@ -7,11 +7,22 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/fastschema/qjs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// StringifyErrorUnmarshaler implements json.Unmarshaler for testing JSONStringify errors
+type StringifyErrorUnmarshaler struct {
+	Value string
+}
+
+func (seu *StringifyErrorUnmarshaler) UnmarshalJSON(data []byte) error {
+	seu.Value = string(data)
+	return nil
+}
 
 func validateCircularReference(t *testing.T, err error) {
 	t.Helper()
@@ -206,6 +217,8 @@ func TestJsNumberToGo(t *testing.T) {
 		bigIntVal := result.GetPropertyStr("bigIntValue")
 		defer bigIntVal.Free()
 
+		type CustomNumber int
+
 		type numTest struct {
 			name   string
 			expect any
@@ -253,6 +266,7 @@ func TestJsNumberToGo(t *testing.T) {
 			{"*complex64", complex64(complex(float32(42), 0)), *must(qjs.JsNumberToGo[*complex64](normalNum)), 0},
 			{"complex128", complex(float64(42), 0), must(qjs.JsNumberToGo[complex128](normalNum)), 0},
 			{"*complex128", complex(float64(42), 0), *must(qjs.JsNumberToGo[*complex128](normalNum)), 0},
+			{"CustomNumber", CustomNumber(42), must(qjs.JsNumberToGo[CustomNumber](normalNum)), 0},
 		}
 
 		for _, test := range numTests {
@@ -1866,18 +1880,25 @@ func TestJsFuncToGo(t *testing.T) {
 			errMsg:    "expected GO target function",
 		},
 		{
-			name:      "invalid_function_signature",
-			jsCode:    `(a, b) => a + b`,
-			sample:    func(a, b int) int { return 0 },
-			expectErr: true,
-			errMsg:    "expected GO target function with two return values",
+			name:     "function_with_single_return_value",
+			jsCode:   `(a, b) => a + b`,
+			sample:   func(a, b int) int { return 0 },
+			args:     []any{5, 3},
+			expected: 8,
 		},
 		{
-			name:      "incorrect_second_return_type",
-			jsCode:    `(a, b) => a + b`,
-			sample:    func(a, b int) (int, string) { return 0, "" },
-			expectErr: true,
-			errMsg:    "expected GO target function with two return values",
+			name:            "function_with_single_error_return",
+			jsCode:          `() => { throw new Error("test error"); }`,
+			sample:          func() error { return nil },
+			args:            []any{},
+			expectInvolkErr: "test error",
+		},
+		{
+			name:            "error_in_single_non_error_return",
+			jsCode:          `() => { throw new Error("js error"); }`,
+			sample:          func() int { return 0 },
+			args:            []any{},
+			expectInvolkErr: "js error",
 		},
 		{
 			name:            "undefined_return_explicit_check",
@@ -2035,19 +2056,53 @@ func TestJsFuncToGo(t *testing.T) {
 					results = fnVal.Call(argVals)
 				}
 
-				// should have 2 results (value, error)
-				assert.Equal(t, 2, len(results))
-				if test.expectInvolkErr != "" {
-					assert.NotNil(t, results[1].Interface())
-					assert.Contains(t, results[1].Interface().(error).Error(), test.expectInvolkErr)
-					return
-				}
+				// Get the function type to check number of return values
+				sampleFnType := reflect.TypeOf(test.sample)
+				numOut := sampleFnType.NumOut()
 
-				assert.Nil(t, results[1].Interface())
-				if test.expectZeroValue {
-					assert.Equal(t, reflect.Zero(reflect.TypeOf(test.expected)).Interface(), results[0].Interface())
+				// Check results based on number of return values
+				if numOut == 1 {
+					// Single return value (non-error or error)
+					assert.Equal(t, 1, len(results))
+
+					// Check if there's an expected error
+					if test.expectInvolkErr != "" {
+						assert.NotNil(t, results[0].Interface())
+						if err, ok := results[0].Interface().(error); ok {
+							assert.Contains(t, err.Error(), test.expectInvolkErr)
+						} else {
+							t.Errorf("Expected error but got %T: %v", results[0].Interface(), results[0].Interface())
+						}
+					} else {
+						// Check if it's an error type
+						returnType := sampleFnType.Out(0)
+						if returnType.Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+							// Single error return
+							assert.Nil(t, results[0].Interface())
+						} else {
+							// Single non-error return
+							if test.expectZeroValue {
+								assert.Equal(t, reflect.Zero(reflect.TypeOf(test.expected)).Interface(), results[0].Interface())
+							} else {
+								assert.Equal(t, test.expected, results[0].Interface())
+							}
+						}
+					}
 				} else {
-					assert.Equal(t, test.expected, results[0].Interface())
+					// Two return values (value, error)
+					assert.Equal(t, 2, len(results))
+					if test.expectInvolkErr != "" {
+						assert.NotNil(t, results[1].Interface())
+						assert.Contains(t, results[1].Interface().(error).Error(), test.expectInvolkErr)
+						return
+					}
+
+					assert.Nil(t, results[1].Interface())
+					if test.expectZeroValue {
+						assert.Equal(t, reflect.Zero(reflect.TypeOf(test.expected)).Interface(), results[0].Interface())
+					} else {
+						assert.Equal(t, test.expected, results[0].Interface())
+					}
 				}
 			}
 		})
@@ -2077,10 +2132,8 @@ func TestJsFuncToGo(t *testing.T) {
 			var goFunc func(int, int, any) (any, error)
 			goFunc = must(qjs.JsFuncToGo(jsFuncValue, goFunc))
 
-			ch := make(chan string)
-			defer close(ch)
-
-			result, err := goFunc(1, 2, ch)
+			unsafePtr := unsafe.Pointer(&[]byte{1, 2, 3}[0])
+			result, err := goFunc(1, 2, unsafePtr)
 			assert.Nil(t, result)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "failed to convert go function argument at index 2")
@@ -2099,10 +2152,8 @@ func TestJsFuncToGo(t *testing.T) {
 			var goFunc func(int, any, ...any) (any, error)
 			goFunc = must(qjs.JsFuncToGo(jsFuncValue, goFunc))
 
-			ch := make(chan int)
-			defer close(ch)
-
-			result, err := goFunc(1, ch, "extra1", "extra2")
+			unsafePtr := unsafe.Pointer(&[]byte{1, 2, 3}[0])
+			result, err := goFunc(1, unsafePtr, "extra1", "extra2")
 			assert.Nil(t, result)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "failed to convert go function argument at index 1")
@@ -2120,10 +2171,8 @@ func TestJsFuncToGo(t *testing.T) {
 			var goFunc func(int, ...any) (any, error)
 			goFunc = must(qjs.JsFuncToGo(jsFuncValue, goFunc))
 
-			ch := make(chan bool)
-			defer close(ch)
-
-			result, err := goFunc(1, "valid", ch, "another")
+			unsafePtr := unsafe.Pointer(&[]byte{1, 2, 3}[0])
+			result, err := goFunc(1, "valid", unsafePtr, "another")
 			assert.Nil(t, result)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "failed to convert go function argument at index 2")
@@ -2616,14 +2665,4 @@ func TestStringToNumericConversion(t *testing.T) {
 			})
 		}
 	})
-}
-
-// StringifyErrorUnmarshaler implements json.Unmarshaler for testing JSONStringify errors
-type StringifyErrorUnmarshaler struct {
-	Value string
-}
-
-func (seu *StringifyErrorUnmarshaler) UnmarshalJSON(data []byte) error {
-	seu.Value = string(data)
-	return nil
 }

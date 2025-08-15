@@ -3,10 +3,13 @@ package qjs
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime/debug"
 )
 
 var (
+	ErrRType                   = reflect.TypeOf((*error)(nil)).Elem()
+	ErrZeroRValue              = reflect.Zero(ErrRType)
 	ErrCallFuncOnNonObject     = errors.New("cannot call function on non-object")
 	ErrNotAnObject             = errors.New("value is not an object")
 	ErrObjectNotAConstructor   = errors.New("object not a constructor")
@@ -26,6 +29,10 @@ var (
 	ErrRuntimeClosed           = errors.New("runtime is closed")
 	ErrNilModule               = errors.New("WASM module is nil")
 	ErrNilHandle               = errors.New("handle is nil")
+	ErrChanClosed              = errors.New("channel is closed")
+	ErrChanSend                = errors.New("channel send would block: buffer full or no receiver ready")
+	ErrChanReceive             = errors.New("channel receive would block: buffer empty or no sender ready")
+	ErrChanCloseReceiveOnly    = errors.New("cannot close receive-only channel")
 )
 
 func combineErrors(errs ...error) error {
@@ -102,7 +109,7 @@ func newArgConversionErr(index int, err error) error {
 }
 
 func newInvalidGoTargetErr(expect string, got any) error {
-	return fmt.Errorf("expected GO target %s, got %T=%v", expect, got, got)
+	return fmt.Errorf("expected GO target %s, got %T", expect, got)
 }
 
 func newInvalidJsInputErr(kind string, input *Value) (err error) {

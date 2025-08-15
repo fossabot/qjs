@@ -38,7 +38,7 @@ func FuncToJS(c *Context, v any) (_ *Value, err error) {
 	}
 
 	fnType := rval.Type()
-	if err := VerifyGoFunc(fnType); err != nil {
+	if err := VerifyGoFunc(fnType, v); err != nil {
 		return nil, err
 	}
 
@@ -57,37 +57,6 @@ func FuncToJS(c *Context, v any) (_ *Value, err error) {
 
 		return GoFuncResultToJs(c, results)
 	}), nil
-}
-
-// VerifyGoFunc validates that a function signature is compatible with JS conversion.
-// Ensures functions have 0-2 return values, with optional error as second return.
-func VerifyGoFunc(fnType reflect.Type) error {
-	signature := CreateGoFuncSignature(fnType)
-	numOut := fnType.NumOut()
-
-	if numOut > MaxGoFuncReturnValues {
-		return fmt.Errorf("expected 0-2 return values, got '%s'", signature)
-	}
-
-	if numOut == MaxGoFuncReturnValues && !IsImplementError(fnType.Out(1)) {
-		return fmt.Errorf("expected second return to be error, got '%s'", signature)
-	}
-
-	if numOut >= 1 {
-		err := IsConvertibleToJs(fnType.Out(0), make(map[reflect.Type]bool), "func return")
-		if err != nil {
-			return err
-		}
-	}
-
-	for i := range fnType.NumIn() {
-		err := IsConvertibleToJs(fnType.In(i), make(map[reflect.Type]bool), "func param")
-		if err != nil {
-			return fmt.Errorf("parameter %d error: %w", i, err)
-		}
-	}
-
-	return nil
 }
 
 // JsFuncArgsToGo converts JS arguments to Go arguments in both variadic and non-variadic functions,
@@ -147,7 +116,7 @@ func handlePointerArgument(jsArg *Value, argType reflect.Type) (reflect.Value, e
 
 	goVal, err := JsValueToGo(jsArg, zeroVal.Interface())
 	if err != nil {
-		return reflect.Value{}, newJsToGoErr(jsArg, err, "function param pointer")
+		return reflect.Value{}, newJsToGoErr(jsArg, err, "function param pointer to "+jsArg.Type())
 	}
 
 	ptrVal := reflect.New(underlyingType)
@@ -166,7 +135,7 @@ func JsArgToGo(jsArg *Value, argType reflect.Type) (reflect.Value, error) {
 
 	goVal, err := JsValueToGo(jsArg, goZeroVal)
 	if err != nil {
-		return reflect.Value{}, newJsToGoErr(jsArg, err, "function param")
+		return reflect.Value{}, newJsToGoErr(jsArg, err, "function param "+jsArg.Type())
 	}
 
 	return reflect.ValueOf(goVal), nil
@@ -192,43 +161,58 @@ func CreateVariadicSlice(jsArgs []*Value, sliceType reflect.Type, fixedArgsCount
 }
 
 // GoFuncResultToJs processes Go function call results and converts them to JS values.
-// Supports error-only, single value, and (value, error) return patterns.
-// Errors are thrown in JS context, other values are converted to appropriate JS types.
+// If last return value is a non-nil error, it's thrown in JS context.
+// The remaining return values are converted to JS value or JS array if there are multiple.
 func GoFuncResultToJs(c *Context, results []reflect.Value) (*Value, error) {
 	if len(results) == 0 {
 		return nil, nil
 	}
 
-	if len(results) == 1 {
-		result := results[0]
-		if IsImplementError(result.Type()) {
-			if !result.IsNil() {
-				resultErr, _ := result.Interface().(error)
-				c.ThrowError(resultErr)
+	// Check if last return value is an error
+	lastIdx := len(results) - 1
+	lastResult := results[lastIdx]
 
-				return nil, nil
-			}
+	// Last return is error
+	if IsImplementError(lastResult.Type()) {
+		// Last return is non-nil error -> throw in JS context
+		if !lastResult.IsNil() {
+			resultErr, _ := lastResult.Interface().(error)
+			c.ThrowError(resultErr)
 
 			return nil, nil
 		}
 
-		return ToJSValue(c, result.Interface())
-	}
+		// Error is nil, handle remaining return values
+		remaining := results[:lastIdx]
 
-	// Handle (value, error) return pattern
-	if len(results) == MaxGoFuncReturnValues {
-		lastResult := results[1]
-		if IsImplementError(lastResult.Type()) {
-			if !lastResult.IsNil() {
-				resultErr, _ := lastResult.Interface().(error)
-				c.ThrowError(resultErr)
-
-				return nil, nil
-			}
-
-			return ToJSValue(c, results[0].Interface())
+		if len(remaining) == 0 {
+			return nil, nil
 		}
+
+		// Single remaining value -> return that value
+		if len(remaining) == 1 {
+			return ToJSValue(c, remaining[0].Interface())
+		}
+
+		// Multiple remaining values -> return as JS array
+		jsValues := make([]any, len(remaining))
+		for i, result := range remaining {
+			jsValues[i] = result.Interface()
+		}
+
+		return ToJSValue(c, jsValues)
 	}
 
-	return ToJSValue(c, results[0].Interface())
+	// Single return value -> return that value
+	if len(results) == 1 {
+		return ToJSValue(c, results[0].Interface())
+	}
+
+	// Multiple return values -> return as JS array
+	jsValues := make([]any, len(results))
+	for i, result := range results {
+		jsValues[i] = result.Interface()
+	}
+
+	return ToJSValue(c, jsValues)
 }

@@ -3,6 +3,7 @@ package qjs_test
 import (
 	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/fastschema/qjs"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,11 @@ func TestIsConvertibleToJs(t *testing.T) {
 			{"bool", true, true},
 			{"float64", 3.14, true},
 			{"[]int", []int{1, 2, 3}, true},
+			{"[]unsafe.Pointer", []unsafe.Pointer{}, false},
 			{"map[string]int", map[string]int{"key": 1}, true},
+			{"map[unsafe.Pointer]string", map[unsafe.Pointer]string{}, false},
+			{"map[string]unsafe.Pointer", map[string]unsafe.Pointer{}, false},
+			{"chan int", make(chan int), true},
 		}
 
 		for _, tt := range basicTypes {
@@ -36,10 +41,11 @@ func TestIsConvertibleToJs(t *testing.T) {
 	})
 
 	t.Run("UnsupportedTypes", func(t *testing.T) {
-		t.Run("channel", func(t *testing.T) {
-			err := qjs.IsConvertibleToJs(reflect.TypeOf(make(chan int)), make(map[reflect.Type]bool), "test")
-			assert.Error(t, err, "Channel should not be convertible")
-			assert.Contains(t, err.Error(), "channel", "Error should mention channel")
+		t.Run("unsafe_pointer", func(t *testing.T) {
+			unsafePtr := unsafe.Pointer(&[]byte{1, 2, 3}[0])
+			err := qjs.IsConvertibleToJs(reflect.TypeOf(unsafePtr), make(map[reflect.Type]bool), "test")
+			assert.Error(t, err, "unsafe.Pointer should not be convertible")
+			assert.Contains(t, err.Error(), "unsafe.Pointer", "Error should mention unsafe.Pointer")
 		})
 	})
 
@@ -67,7 +73,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 		t.Run("MixedFieldsWithUnsupportedPrivate", func(t *testing.T) {
 			type TestStruct struct {
 				PublicField  string
-				privateField chan int
+				privateField unsafe.Pointer
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -79,7 +85,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 		t.Run("JSONOmitTag", func(t *testing.T) {
 			type TestStruct struct {
 				PublicField  string
-				OmittedField chan int `json:"-"`
+				OmittedField unsafe.Pointer `json:"-"`
 				AnotherField int
 			}
 
@@ -89,8 +95,8 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("JSONRenameTag", func(t *testing.T) {
 			type TestStruct struct {
-				Field            string   `json:"renamed_field"`
-				UnsupportedField chan int `json:"-"`
+				Field            string         `json:"renamed_field"`
+				UnsupportedField unsafe.Pointer `json:"-"`
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -100,7 +106,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 		t.Run("UnsupportedFieldWithoutOmitTag", func(t *testing.T) {
 			type TestStruct struct {
 				PublicField      string
-				UnsupportedField chan int
+				UnsupportedField unsafe.Pointer
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -110,10 +116,10 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("ComplexJSONTags", func(t *testing.T) {
 			type TestStruct struct {
-				Field1         string    `json:"field1,omitempty"`
-				Field2         int       `json:"field2"`
-				OmittedField   chan int  `json:"-"`
-				AnotherOmitted chan bool `json:"-,"`
+				Field1         string         `json:"field1,omitempty"`
+				Field2         int            `json:"field2"`
+				OmittedField   unsafe.Pointer `json:"-"`
+				AnotherOmitted unsafe.Pointer `json:"-,"`
 			}
 
 			err := qjs.IsConvertibleToJs(reflect.TypeOf(TestStruct{}), make(map[reflect.Type]bool), "test")
@@ -147,7 +153,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("InvalidNested", func(t *testing.T) {
 			type Inner struct {
-				BadField chan int
+				BadField unsafe.Pointer
 			}
 			type Outer struct {
 				Inner Inner
@@ -187,7 +193,7 @@ func TestIsConvertibleToJs(t *testing.T) {
 
 		t.Run("EmbeddedPointerWithUnsupportedField", func(t *testing.T) {
 			type Inner struct {
-				BadField chan int
+				BadField unsafe.Pointer
 			}
 			type Outer struct {
 				*Inner
@@ -216,10 +222,51 @@ func TestIsConvertibleToJs(t *testing.T) {
 	t.Run("Pointers", func(t *testing.T) {
 		type TestStruct struct {
 			Field        string
-			OmittedField chan int `json:"-"`
+			OmittedField unsafe.Pointer `json:"-"`
 		}
 
 		err := qjs.IsConvertibleToJs(reflect.TypeOf(&TestStruct{}), make(map[reflect.Type]bool), "test")
 		assert.NoError(t, err, "Pointer to convertible struct should be convertible")
 	})
+}
+
+func TestGetGoTypeName(t *testing.T) {
+	// Test input handling - reflect.Type vs value
+	assert.Equal(t, "int", qjs.GetGoTypeName(reflect.TypeOf(42)))
+	assert.Equal(t, "int", qjs.GetGoTypeName(42))
+
+	// Test nil input panics
+	assert.Panics(t, func() { qjs.GetGoTypeName(nil) })
+
+	// Test pointer branch
+	var intPtr *int
+	assert.Equal(t, "*int", qjs.GetGoTypeName(intPtr))
+
+	// Test slice branch
+	var intSlice []int
+	assert.Equal(t, "[]int", qjs.GetGoTypeName(intSlice))
+
+	// Test array branch
+	var intArray [5]int
+	assert.Equal(t, "[5]int", qjs.GetGoTypeName(intArray))
+
+	// Test map branch
+	var stringIntMap map[string]int
+	assert.Equal(t, "map[string]int", qjs.GetGoTypeName(stringIntMap))
+
+	// Test channel branch
+	var intChan chan int
+	assert.Equal(t, "chan int", qjs.GetGoTypeName(intChan))
+
+	// Test function branch
+	var simpleFunc func()
+	assert.Equal(t, "func()", qjs.GetGoTypeName(simpleFunc))
+
+	// Test default case (basic types)
+	assert.Equal(t, "string", qjs.GetGoTypeName("hello"))
+	assert.Equal(t, "bool", qjs.GetGoTypeName(true))
+	assert.Equal(t, "float64", qjs.GetGoTypeName(3.14))
+
+	var goFunc func(int, ...int) (int, error)
+	assert.Equal(t, "func(int, ...int) (int, error)", qjs.GetGoTypeName(goFunc))
 }

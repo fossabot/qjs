@@ -59,6 +59,8 @@ func setupSetWithFailingMethod(ctx *qjs.Context, methodName, errorMsg string) *q
 
 // Array Tests
 func TestArray(t *testing.T) {
+	_, ctx := setupRuntime(t)
+
 	t.Run("Nil_Array", func(t *testing.T) {
 		var nilArray *qjs.Array
 		assert.Nil(t, nilArray)
@@ -68,31 +70,25 @@ func TestArray(t *testing.T) {
 		nilArray.Set(0, nil)
 	})
 
-	t.Run("Creation_and_Validation", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
+	t.Run("create_from_nil_value", func(t *testing.T) {
+		assert.Nil(t, qjs.NewArray(nil))
+	})
 
-		t.Run("create_from_nil_value", func(t *testing.T) {
-			assert.Nil(t, qjs.NewArray(nil))
-		})
+	t.Run("create_from_non_array_value", func(t *testing.T) {
+		nonArray := ctx.NewString("not an array")
+		defer nonArray.Free()
+		assert.Nil(t, qjs.NewArray(nonArray))
+	})
 
-		t.Run("create_from_non_array_value", func(t *testing.T) {
-			nonArray := ctx.NewString("not an array")
-			defer nonArray.Free()
-			assert.Nil(t, qjs.NewArray(nonArray))
-		})
-
-		t.Run("create_from_valid_array", func(t *testing.T) {
-			arr := ctx.NewArray()
-			defer arr.Free()
-			wrappedArr := qjs.NewArray(arr.Value)
-			assert.NotNil(t, wrappedArr)
-			assert.Equal(t, int64(0), wrappedArr.Len())
-		})
+	t.Run("create_from_valid_array", func(t *testing.T) {
+		arr := ctx.NewArray()
+		defer arr.Free()
+		wrappedArr := qjs.NewArray(arr.Value)
+		assert.NotNil(t, wrappedArr)
+		assert.Equal(t, int64(0), wrappedArr.Len())
 	})
 
 	t.Run("Basic_Operations", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
-
 		t.Run("push_and_get_elements", func(t *testing.T) {
 			array := ctx.NewArray()
 			defer array.Free()
@@ -168,7 +164,6 @@ func TestArray(t *testing.T) {
 	})
 
 	t.Run("JSON_Serialization", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
 		array := ctx.NewArray()
 		defer array.Free()
 
@@ -224,6 +219,8 @@ func TestArray(t *testing.T) {
 
 // Map Tests
 func TestMap(t *testing.T) {
+	_, ctx := setupRuntime(t)
+
 	t.Run("Nil_Map", func(t *testing.T) {
 		var nilMap *qjs.Map
 		assert.Nil(t, nilMap)
@@ -235,27 +232,23 @@ func TestMap(t *testing.T) {
 		nilMap.Delete(nil)
 	})
 
-	t.Run("Creation_and_Validation", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
+	t.Run("create_from_nil_value", func(t *testing.T) {
+		assert.Nil(t, qjs.NewMap(nil))
+	})
 
-		t.Run("create_from_nil_value", func(t *testing.T) {
-			assert.Nil(t, qjs.NewMap(nil))
-		})
+	t.Run("create_from_non_map_value", func(t *testing.T) {
+		nonMap := ctx.NewString("not a map")
+		defer nonMap.Free()
+		assert.Nil(t, qjs.NewMap(nonMap))
+	})
 
-		t.Run("create_from_non_map_value", func(t *testing.T) {
-			nonMap := ctx.NewString("not a map")
-			defer nonMap.Free()
-			assert.Nil(t, qjs.NewMap(nonMap))
-		})
-
-		t.Run("create_from_valid_map", func(t *testing.T) {
-			m := ctx.NewMap()
-			defer m.Free()
-			wrappedMap := qjs.NewMap(m.Value)
-			assert.NotNil(t, wrappedMap)
-			assert.True(t, wrappedMap.IsMap())
-			assert.True(t, wrappedMap.IsObject())
-		})
+	t.Run("create_from_valid_map", func(t *testing.T) {
+		m := ctx.NewMap()
+		defer m.Free()
+		wrappedMap := qjs.NewMap(m.Value)
+		assert.NotNil(t, wrappedMap)
+		assert.True(t, wrappedMap.IsMap())
+		assert.True(t, wrappedMap.IsObject())
 	})
 
 	t.Run("Basic_Operations", func(t *testing.T) {
@@ -301,50 +294,46 @@ func TestMap(t *testing.T) {
 		})
 	})
 
-	t.Run("Advanced_Features", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
+	t.Run("forEach_iteration", func(t *testing.T) {
+		m := ctx.NewMap()
+		defer m.Free()
 
-		t.Run("forEach_iteration", func(t *testing.T) {
-			m := ctx.NewMap()
-			defer m.Free()
+		m.Set(ctx.NewString("name"), ctx.NewString("John"))
+		m.Set(ctx.NewString("age"), ctx.NewInt32(30))
 
-			m.Set(ctx.NewString("name"), ctx.NewString("John"))
-			m.Set(ctx.NewString("age"), ctx.NewInt32(30))
-
-			entries := make(map[string]string)
-			m.ForEach(func(key, value *qjs.Value) {
-				entries[key.String()] = value.String()
-			})
-
-			assert.Len(t, entries, 2)
-			assert.Equal(t, "John", entries["name"])
-			assert.Equal(t, "30", entries["age"])
+		entries := make(map[string]string)
+		m.ForEach(func(key, value *qjs.Value) {
+			entries[key.String()] = value.String()
 		})
 
-		t.Run("create_object_conversion", func(t *testing.T) {
-			m := ctx.NewMap()
-			defer m.Free()
+		assert.Len(t, entries, 2)
+		assert.Equal(t, "John", entries["name"])
+		assert.Equal(t, "30", entries["age"])
+	})
 
-			key := ctx.NewString("test")
-			value := ctx.NewString("value")
-			m.Set(key, value)
+	t.Run("create_object_conversion", func(t *testing.T) {
+		m := ctx.NewMap()
+		defer m.Free()
 
-			obj := m.CreateObject()
-			defer obj.Free()
-			assert.Equal(t, "value", obj.GetPropertyStr("test").String())
-		})
+		key := ctx.NewString("test")
+		value := ctx.NewString("value")
+		m.Set(key, value)
 
-		t.Run("json_stringify_output", func(t *testing.T) {
-			m := ctx.NewMap()
-			defer m.Free()
+		obj := m.CreateObject()
+		defer obj.Free()
+		assert.Equal(t, "value", obj.GetPropertyStr("test").String())
+	})
 
-			m.Set(ctx.NewString("name"), ctx.NewString("John"))
-			m.Set(ctx.NewString("age"), ctx.NewInt32(30))
+	t.Run("json_stringify_output", func(t *testing.T) {
+		m := ctx.NewMap()
+		defer m.Free()
 
-			json := must(m.JSONStringify())
-			assert.Contains(t, json, `"name":"John"`)
-			assert.Contains(t, json, `"age":30`)
-		})
+		m.Set(ctx.NewString("name"), ctx.NewString("John"))
+		m.Set(ctx.NewString("age"), ctx.NewInt32(30))
+
+		json := must(m.JSONStringify())
+		assert.Contains(t, json, `"name":"John"`)
+		assert.Contains(t, json, `"age":30`)
 	})
 
 	t.Run("Error_Handling", func(t *testing.T) {
@@ -490,6 +479,8 @@ func TestMap(t *testing.T) {
 
 // Set Tests
 func TestSet(t *testing.T) {
+	_, ctx := setupRuntime(t)
+
 	t.Run("Nil_Set", func(t *testing.T) {
 		var nilSet *qjs.Set
 		nilSet.ForEach(nil)
@@ -500,105 +491,93 @@ func TestSet(t *testing.T) {
 		nilSet.Delete(nil)
 	})
 
-	t.Run("Creation_and_Validation", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
-
-		t.Run("create_from_nil_value", func(t *testing.T) {
-			assert.Nil(t, qjs.NewSet(nil))
-		})
-
-		t.Run("create_from_non_set_value", func(t *testing.T) {
-			nonSet := ctx.NewString("not a set")
-			defer nonSet.Free()
-			assert.Nil(t, qjs.NewSet(nonSet))
-		})
-
-		t.Run("create_from_valid_set", func(t *testing.T) {
-			s := ctx.NewSet()
-			defer s.Free()
-			wrappedSet := qjs.NewSet(s.Value)
-			assert.NotNil(t, wrappedSet)
-		})
+	t.Run("create_from_nil_value", func(t *testing.T) {
+		assert.Nil(t, qjs.NewSet(nil))
 	})
 
-	t.Run("Basic_Operations", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
-
-		t.Run("add_has_delete_operations", func(t *testing.T) {
-			set := ctx.NewSet()
-			defer set.Free()
-
-			str1, _, _, int1, bool1 := createTestValues(ctx)
-
-			// Add values
-			set.Add(str1)
-			set.Add(int1)
-			set.Add(bool1)
-
-			// Duplicate addition should not error
-			set.Add(str1)
-
-			// Check existence
-			assert.True(t, set.Has(str1))
-			assert.False(t, set.Has(ctx.NewString("missing")))
-
-			// Delete value
-			set.Delete(str1)
-			assert.False(t, set.Has(str1))
-		})
+	t.Run("create_from_non_set_value", func(t *testing.T) {
+		nonSet := ctx.NewString("not a set")
+		defer nonSet.Free()
+		assert.Nil(t, qjs.NewSet(nonSet))
 	})
 
-	t.Run("Advanced_Features", func(t *testing.T) {
-		_, ctx := setupRuntime(t)
+	t.Run("create_from_valid_set", func(t *testing.T) {
+		s := ctx.NewSet()
+		defer s.Free()
+		wrappedSet := qjs.NewSet(s.Value)
+		assert.NotNil(t, wrappedSet)
+	})
 
-		t.Run("forEach_iteration", func(t *testing.T) {
-			set := ctx.NewSet()
-			defer set.Free()
+	t.Run("add_has_delete_operations", func(t *testing.T) {
+		set := ctx.NewSet()
+		defer set.Free()
 
-			str1, str2, str3, _, _ := createTestValues(ctx)
-			set.Add(str1)
-			set.Add(str2)
-			set.Add(str3)
+		str1, _, _, int1, bool1 := createTestValues(ctx)
 
-			values := make([]string, 0)
-			set.ForEach(func(value *qjs.Value) {
-				values = append(values, value.String())
-			})
+		// Add values
+		set.Add(str1)
+		set.Add(int1)
+		set.Add(bool1)
 
-			assert.Len(t, values, 3)
-			assert.Contains(t, values, "hello")
-			assert.Contains(t, values, "world")
-			assert.Contains(t, values, "test")
+		// Duplicate addition should not error
+		set.Add(str1)
+
+		// Check existence
+		assert.True(t, set.Has(str1))
+		assert.False(t, set.Has(ctx.NewString("missing")))
+
+		// Delete value
+		set.Delete(str1)
+		assert.False(t, set.Has(str1))
+	})
+
+	t.Run("forEach_iteration", func(t *testing.T) {
+		set := ctx.NewSet()
+		defer set.Free()
+
+		str1, str2, str3, _, _ := createTestValues(ctx)
+		set.Add(str1)
+		set.Add(str2)
+		set.Add(str3)
+
+		values := make([]string, 0)
+		set.ForEach(func(value *qjs.Value) {
+			values = append(values, value.String())
 		})
 
-		t.Run("to_array_conversion", func(t *testing.T) {
-			set := ctx.NewSet()
-			defer set.Free()
+		assert.Len(t, values, 3)
+		assert.Contains(t, values, "hello")
+		assert.Contains(t, values, "world")
+		assert.Contains(t, values, "test")
+	})
 
-			str1, _, _, int1, bool1 := createTestValues(ctx)
-			set.Add(str1)
-			set.Add(int1)
-			set.Add(bool1)
+	t.Run("to_array_conversion", func(t *testing.T) {
+		set := ctx.NewSet()
+		defer set.Free()
 
-			array := set.ToArray()
-			defer array.Free()
-			assert.Equal(t, int64(3), array.Len())
-		})
+		str1, _, _, int1, bool1 := createTestValues(ctx)
+		set.Add(str1)
+		set.Add(int1)
+		set.Add(bool1)
 
-		t.Run("json_stringify_output", func(t *testing.T) {
-			set := ctx.NewSet()
-			defer set.Free()
+		array := set.ToArray()
+		defer array.Free()
+		assert.Equal(t, int64(3), array.Len())
+	})
 
-			str1, _, _, int1, bool1 := createTestValues(ctx)
-			set.Add(str1)
-			set.Add(int1)
-			set.Add(bool1)
+	t.Run("json_stringify_output", func(t *testing.T) {
+		set := ctx.NewSet()
+		defer set.Free()
 
-			json := must(set.JSONStringify())
-			assert.Contains(t, json, "hello")
-			assert.Contains(t, json, "42")
-			assert.Contains(t, json, "true")
-		})
+		str1, _, _, int1, bool1 := createTestValues(ctx)
+		set.Add(str1)
+		set.Add(int1)
+		set.Add(bool1)
+
+		json := must(set.JSONStringify())
+		assert.Contains(t, json, "hello")
+		assert.Contains(t, json, "42")
+		assert.Contains(t, json, "true")
 	})
 
 	t.Run("Error_Handling", func(t *testing.T) {

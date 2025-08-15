@@ -84,23 +84,6 @@ func TestContextValueCreation(t *testing.T) {
 					assert.Equal(t, "Hello, World!", val.String())
 				},
 			},
-		}
-
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				val := tc.creator()
-				defer val.Free()
-				tc.verifier(t, val)
-			})
-		}
-	})
-
-	t.Run("numeric_values", func(t *testing.T) {
-		testCases := []struct {
-			name     string
-			creator  func() *qjs.Value
-			verifier func(*testing.T, *qjs.Value)
-		}{
 			{
 				name:    "int32",
 				creator: func() *qjs.Value { return ctx.NewInt32(42) },
@@ -200,94 +183,11 @@ func TestContextObjectsAndCollections(t *testing.T) {
 		defer tag0.Free()
 		assert.Equal(t, "developer", tag0.String())
 	})
-
-	t.Run("array_operations", func(t *testing.T) {
-		arr := ctx.NewArray()
-		defer arr.Free()
-		assert.Equal(t, int64(0), arr.Len())
-
-		assert.Equal(t, int64(3), arr.Push(
-			ctx.NewString("hello"),
-			ctx.NewInt32(42),
-			ctx.NewBool(true),
-		))
-
-		val0 := arr.Get(0)
-		assert.Equal(t, "hello", val0.String())
-		val0.Free()
-
-		val1 := arr.Get(1)
-		assert.Equal(t, int32(42), val1.Int32())
-		val1.Free()
-
-		val2 := arr.Get(2)
-		assert.True(t, val2.Bool())
-		val2.Free()
-	})
-
-	t.Run("map_operations", func(t *testing.T) {
-		m := ctx.NewMap()
-		defer m.Free()
-		assert.True(t, m.IsMap())
-		assert.True(t, m.IsObject())
-
-		key1 := ctx.NewString("name")
-		val1 := ctx.NewString("John")
-		m.Set(key1, val1)
-		key1.Free()
-		val1.Free()
-
-		key2 := ctx.NewString("age")
-		val2 := ctx.NewInt32(30)
-		m.Set(key2, val2)
-		key2.Free()
-		val2.Free()
-
-		hasKey := ctx.NewString("name")
-		assert.True(t, m.Has(hasKey))
-		hasKey.Free()
-
-		getKey := ctx.NewString("name")
-		result := m.Get(getKey)
-		assert.Equal(t, "John", result.String())
-		getKey.Free()
-		result.Free()
-	})
-
-	t.Run("set_operations", func(t *testing.T) {
-		set := ctx.NewSet()
-		defer set.Free()
-
-		set.Add(ctx.NewString("one"))
-		set.Add(ctx.NewInt32(2))
-		set.Add(ctx.NewBool(true))
-
-		assert.True(t, set.Has(ctx.NewString("one")))
-
-		values := make([]string, 0)
-		set.ForEach(func(value *qjs.Value) {
-			values = append(values, value.String())
-		})
-		assert.Len(t, values, 3)
-		assert.Contains(t, values, "one")
-		assert.Contains(t, values, "2")
-		assert.Contains(t, values, "true")
-	})
 }
 
 // Error Handling Tests
 func TestContextErrorHandling(t *testing.T) {
 	_, ctx := setupRuntime(t)
-
-	t.Run("error_object_creation", func(t *testing.T) {
-		errObj := ctx.NewError(errors.New("test error"))
-		defer errObj.Free()
-
-		assert.True(t, errObj.IsObject())
-		message := errObj.GetPropertyStr("message")
-		defer message.Free()
-		assert.Equal(t, "test error", message.String())
-	})
 
 	t.Run("exception_throwing", func(t *testing.T) {
 		testCases := []struct {
@@ -495,19 +395,6 @@ func testAsynchronousFunctions(t *testing.T) {
 	t.Run("async_argument_handling", func(t *testing.T) {
 		tests := createAsyncArgumentHandlingTests()
 		runFunctionTests(t, tests, true)
-	})
-}
-
-// Memory Operations Tests
-func TestContextMemoryOperations(t *testing.T) {
-	_, ctx := setupRuntime(t)
-
-	t.Run("array_buffer_creation", func(t *testing.T) {
-		testData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-		buffer := ctx.NewArrayBuffer(testData)
-		defer buffer.Free()
-		// Basic validation that buffer was created without error
-		assert.NotNil(t, buffer)
 	})
 }
 
