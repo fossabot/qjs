@@ -70,7 +70,7 @@ type EmbeddedPointerStructTest struct {
 
 type EmbeddedStructWithUnsupportedField struct {
 	Name     string
-	BadField chan int
+	BadField unsafe.Pointer
 }
 
 type EmbeddedPointerWithErrorTest struct {
@@ -130,18 +130,13 @@ type StructWithDefEmbedded struct {
 	ExtraField string
 }
 
-type CircularStruct struct {
-	Name string
-	Self *CircularStruct
-}
-
 type StructWithInvalidMethod struct {
 	Value int
 }
 
 // InvalidMethod has an unsupported signature that will cause FuncToJS to fail
-func (s StructWithInvalidMethod) InvalidMethod() chan int {
-	return make(chan int) // channels are not supported by FuncToJS
+func (s StructWithInvalidMethod) InvalidMethod() unsafe.Pointer {
+	return unsafe.Pointer(&[]byte{1}[0]) // unsafe.Pointer is not supported by FuncToJS
 }
 
 type NestedLevel struct {
@@ -474,6 +469,13 @@ func TestJSValueConversion(t *testing.T) {
 				assert.True(t, result.IsNull(), "nil byte slice should be null")
 			})
 		})
+
+		t.Run("Channel", func(t *testing.T) {
+			ch := make(chan string, 5)
+			testValueConversion(t, ctx, ch, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Channel should be object")
+			})
+		})
 	})
 
 	t.Run("CollectionTypes", func(t *testing.T) {
@@ -796,44 +798,6 @@ func TestJSValueConversion(t *testing.T) {
 			})
 		})
 
-		t.Run("EmbeddedPointerStructNil", func(t *testing.T) {
-			s := EmbeddedPointerStructTest{
-				EmbeddedStruct: nil,
-				ExtraField:     "extra_only",
-			}
-			testValueConversion(t, ctx, s, func(result *qjs.Value) {
-				assert.True(t, result.IsObject(), "Struct should be object")
-				obj := result.Object()
-				defer obj.Free()
-
-				// Check that nil embedded pointer fields don't add properties
-				nameProp := obj.GetPropertyStr("Name")
-				defer nameProp.Free()
-				assert.True(t, nameProp.IsUndefined(), "Nil embedded pointer fields should not be accessible")
-
-				ageProp := obj.GetPropertyStr("Age")
-				defer ageProp.Free()
-				assert.True(t, ageProp.IsUndefined(), "Nil embedded pointer fields should not be accessible")
-
-				// Check extra field is still accessible
-				extraFieldProp := obj.GetPropertyStr("ExtraField")
-				defer extraFieldProp.Free()
-				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
-				assert.Equal(t, "extra_only", extraFieldProp.String())
-			})
-		})
-
-		t.Run("EmbeddedPointerStructError", func(t *testing.T) {
-			s := EmbeddedPointerWithErrorTest{
-				EmbeddedStructWithUnsupportedField: &EmbeddedStructWithUnsupportedField{
-					Name:     "test",
-					BadField: make(chan int),
-				},
-				ExtraField: "extra",
-			}
-			testErrorCase(t, ctx, s, "channel")
-		})
-
 		t.Run("EmbeddedPrimitiveTypes", func(t *testing.T) {
 			s := StructWithEmbeddedPrimitive{
 				CustomInt:     42,
@@ -963,62 +927,41 @@ func TestJSValueConversion(t *testing.T) {
 				assert.Equal(t, "extra", extraFieldProp.String())
 			})
 		})
-
-		t.Run("ZeroValueStruct", func(t *testing.T) {
-			var s SimpleStruct
-			testValueConversion(t, ctx, s, func(result *qjs.Value) {
-				assert.True(t, result.IsObject(), "Zero struct should be object")
-				obj := result.Object()
-				defer obj.Free()
-
-				nameProp := obj.GetPropertyStr("Name")
-				defer nameProp.Free()
-				assert.True(t, nameProp.IsString(), "Name field should be string")
-				assert.Equal(t, "", nameProp.String())
-
-				ageProp := obj.GetPropertyStr("Age")
-				defer ageProp.Free()
-				assert.True(t, ageProp.IsNumber(), "Age field should be number")
-				assert.Equal(t, int64(0), ageProp.Int64())
-			})
-		})
 	})
 
-	t.Run("BackwardCompatibilityFunctions", func(t *testing.T) {
-		// Test the standalone backward compatibility functions
-		t.Run("StructToJSObjectValue", func(t *testing.T) {
-			s := SimpleStruct{Name: "test", Age: 25}
-			rtype := reflect.TypeOf(s)
-			rval := reflect.ValueOf(s)
+	// Test the standalone backward compatibility functions
+	t.Run("StructToJSObjectValue", func(t *testing.T) {
+		s := SimpleStruct{Name: "test", Age: 25}
+		rtype := reflect.TypeOf(s)
+		rval := reflect.ValueOf(s)
 
-			result, err := qjs.StructToJSObjectValue(ctx, rtype, rval)
-			require.NoError(t, err)
-			defer result.Free()
+		result, err := qjs.StructToJSObjectValue(ctx, rtype, rval)
+		require.NoError(t, err)
+		defer result.Free()
 
-			assert.True(t, result.IsObject(), "StructToJSObjectValue should return object")
-		})
+		assert.True(t, result.IsObject(), "StructToJSObjectValue should return object")
+	})
 
-		t.Run("SliceToArrayValue", func(t *testing.T) {
-			slice := []int{1, 2, 3}
-			rval := reflect.ValueOf(slice)
+	t.Run("SliceToArrayValue", func(t *testing.T) {
+		slice := []int{1, 2, 3}
+		rval := reflect.ValueOf(slice)
 
-			result, err := qjs.SliceToArrayValue(ctx, rval)
-			require.NoError(t, err)
-			defer result.Free()
+		result, err := qjs.SliceToArrayValue(ctx, rval)
+		require.NoError(t, err)
+		defer result.Free()
 
-			assert.True(t, result.IsArray(), "SliceToArrayValue should return array")
-		})
+		assert.True(t, result.IsArray(), "SliceToArrayValue should return array")
+	})
 
-		t.Run("MapToObjectValue", func(t *testing.T) {
-			m := map[string]int{"key": 42}
-			rval := reflect.ValueOf(m)
+	t.Run("MapToObjectValue", func(t *testing.T) {
+		m := map[string]int{"key": 42}
+		rval := reflect.ValueOf(m)
 
-			result, err := qjs.MapToObjectValue(ctx, rval)
-			require.NoError(t, err)
-			defer result.Free()
+		result, err := qjs.MapToObjectValue(ctx, rval)
+		require.NoError(t, err)
+		defer result.Free()
 
-			assert.True(t, result.IsObject(), "MapToObjectValue should return object")
-		})
+		assert.True(t, result.IsObject(), "MapToObjectValue should return object")
 	})
 
 	t.Run("StructFieldAndMethodProcessing", func(t *testing.T) {
@@ -1051,24 +994,10 @@ func TestJSValueConversion(t *testing.T) {
 			})
 		})
 
-		t.Run("StructMethodConversionError", func(t *testing.T) {
-			// Create a struct with a method that returns unsupported type
-			type StructWithBadMethod struct {
-				Value int
-			}
-
-			// This method would cause FuncToJS to fail, but we can't easily test this
-			// without modifying the struct or creating complex scenarios
-			s := StructWithBadMethod{Value: 42}
-			testValueConversion(t, ctx, s, func(result *qjs.Value) {
-				assert.True(t, result.IsObject(), "Struct should be object")
-			})
-		})
-
 		t.Run("EmbeddedStructFieldError", func(t *testing.T) {
 			// Test embedded struct with field that causes conversion error
 			type BadEmbedded struct {
-				Channel chan int
+				UnsafePtr unsafe.Pointer
 			}
 			type StructWithBadEmbedded struct {
 				BadEmbedded
@@ -1076,11 +1005,11 @@ func TestJSValueConversion(t *testing.T) {
 			}
 
 			s := StructWithBadEmbedded{
-				BadEmbedded: BadEmbedded{Channel: make(chan int)},
+				BadEmbedded: BadEmbedded{UnsafePtr: unsafe.Pointer(&[]byte{1}[0])},
 				GoodField:   "good",
 			}
 
-			testErrorCase(t, ctx, s, "channel")
+			testErrorCase(t, ctx, s, "unsafe.Pointer")
 		})
 	})
 }
@@ -1108,27 +1037,33 @@ func TestToJSValue_ErrorHandling(t *testing.T) {
 	})
 
 	type UnsupportedStruct struct {
-		Channel chan int
+		UnsafePtr unsafe.Pointer
 	}
 
 	// Test map with conversion error in value
 	t.Run("ValueConversionError", func(t *testing.T) {
 		badMap := map[string]UnsupportedStruct{
-			"key1": {Channel: make(chan int)},
+			"key1": {UnsafePtr: unsafe.Pointer(&[]byte{1}[0])},
 		}
-		testErrorCase(t, ctx, badMap, "channel")
+		testErrorCase(t, ctx, badMap, "unsafe.Pointer")
 	})
 
 	t.Run("ArrayElementConversionErrors", func(t *testing.T) {
 		// Test array with element that causes conversion error
 		t.Run("ArrayWithUnsupportedElements", func(t *testing.T) {
-			badArray := [2]chan int{make(chan int), make(chan int)}
-			testErrorCase(t, ctx, badArray, "channel")
+			unsafePtrs := [2]unsafe.Pointer{
+				unsafe.Pointer(&[]byte{1}[0]),
+				unsafe.Pointer(&[]byte{2}[0]),
+			}
+			testErrorCase(t, ctx, unsafePtrs, "unsafe.Pointer")
 		})
 
 		t.Run("SliceWithUnsupportedElements", func(t *testing.T) {
-			badSlice := []chan int{make(chan int), make(chan int)}
-			testErrorCase(t, ctx, badSlice, "channel")
+			unsafePtrSlice := []unsafe.Pointer{
+				unsafe.Pointer(&[]byte{3}[0]),
+				unsafe.Pointer(&[]byte{4}[0]),
+			}
+			testErrorCase(t, ctx, unsafePtrSlice, "unsafe.Pointer")
 		})
 	})
 

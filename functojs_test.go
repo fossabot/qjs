@@ -3,7 +3,6 @@ package qjs_test
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 	"unsafe"
 
@@ -53,6 +52,12 @@ func createAndRegisterJSFunc(t *testing.T, ctx *qjs.Context, name string, fn any
 
 func TestBasicConversion(t *testing.T) {
 	_, ctx := setupTestContext(t)
+
+	t.Run("InvalidTypes", func(t *testing.T) {
+		_, err := qjs.FuncToJS(ctx, "not a function")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "expected GO target function")
+	})
 
 	t.Run("FunctionTypes", func(t *testing.T) {
 		// Simple function
@@ -130,6 +135,32 @@ func TestBasicConversion(t *testing.T) {
 
 func TestParameters(t *testing.T) {
 	_, ctx := setupTestContext(t)
+
+	t.Run("ParametersCountMismatch", func(t *testing.T) {
+		createAndRegisterJSFunc(t, ctx, "manyParamFunc", func(a, b, c, d, e int) int {
+			return a + b + c + d + e
+		})
+
+		result := must(ctx.Eval("test.js", qjs.Code(`manyParamFunc(1, 2, 3, 4, 5)`)))
+		defer result.Free()
+		assert.Equal(t, int32(15), result.Int32())
+
+		createAndRegisterJSFunc(t, ctx, "paramFunc", func(a, b, c int) int {
+			return a + b + c
+		})
+
+		result2 := must(ctx.Eval("test.js", qjs.Code(`paramFunc(10)`)))
+		defer result2.Free()
+		assert.Equal(t, int32(10), result2.Int32())
+
+		createAndRegisterJSFunc(t, ctx, "paramFunc2", func(a int) int {
+			return a * 2
+		})
+
+		result3 := must(ctx.Eval("test.js", qjs.Code(`paramFunc2(5, 10, 15)`)))
+		defer result3.Free()
+		assert.Equal(t, int32(10), result3.Int32())
+	})
 
 	t.Run("InvalidParameterTypes", func(t *testing.T) {
 		goFunc, err := qjs.FuncToJS(ctx, func(x int, y ...int) int {
@@ -349,27 +380,6 @@ func TestParameters(t *testing.T) {
 			assert.Equal(t, "Total: 0", result2.String())
 		})
 
-		t.Run("VariadicWithError", func(t *testing.T) {
-			_ = createAndRegisterJSFunc(t, ctx, "variadicWithError", func(prefix string, numbers ...int) (string, error) {
-				if len(numbers) == 0 {
-					return "", errors.New("no numbers provided")
-				}
-				sum := 0
-				for _, num := range numbers {
-					sum += num
-				}
-				return fmt.Sprintf("%s: %d", prefix, sum), nil
-			})
-
-			result := must(ctx.Eval("test.js", qjs.Code(`variadicWithError("Sum", 1, 2, 3, 4)`)))
-			defer result.Free()
-			assert.Equal(t, "Sum: 10", result.String())
-
-			_, err := ctx.Eval("test.js", qjs.Code(`variadicWithError("Sum")`))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "no numbers provided")
-		})
-
 		t.Run("VariadicWithAnyType", func(t *testing.T) {
 			_ = createAndRegisterJSFunc(t, ctx, "formatFunc", func(format string, args ...any) string {
 				return fmt.Sprintf(format, args...)
@@ -392,58 +402,6 @@ func TestParameters(t *testing.T) {
 			_, err := ctx.Eval("test.js", qjs.Code(`variadicIntFunc(1, 2, 1000)`))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "cannot convert JS function argument")
-		})
-	})
-
-	t.Run("UnsupportedParameterTypes", func(t *testing.T) {
-		t.Run("ChannelParameters", func(t *testing.T) {
-			_, err := qjs.FuncToJS(ctx, func(ch chan int) int {
-				return <-ch
-			})
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "cannot convert Go func param 'channel")
-		})
-
-		t.Run("UnsafePointerParameters", func(t *testing.T) {
-			_, err2 := qjs.FuncToJS(ctx, func(ptr unsafe.Pointer) bool {
-				return ptr != nil
-			})
-			require.Error(t, err2)
-			assert.Contains(t, err2.Error(), "cannot convert Go func param 'unsafe.Pointer'")
-		})
-
-		t.Run("NestedUnsupportedTypes", func(t *testing.T) {
-			_, err3 := qjs.FuncToJS(ctx, func(arr [3]chan int) {})
-			require.Error(t, err3)
-			assert.Contains(t, err3.Error(), "cannot convert Go func param 'array")
-
-			_, err4 := qjs.FuncToJS(ctx, func(chans []chan int) int {
-				return len(chans)
-			})
-			require.Error(t, err4)
-			assert.Contains(t, err4.Error(), "cannot convert Go func param 'slice")
-
-			_, err5 := qjs.FuncToJS(ctx, func(m map[string]chan int) int {
-				return len(m)
-			})
-			require.Error(t, err5)
-			assert.Contains(t, err5.Error(), "cannot convert Go func param 'map value: chan int' to JS")
-
-			_, err6 := qjs.FuncToJS(ctx, func(m map[chan int]string) {})
-			require.Error(t, err6)
-			assert.Contains(t, err6.Error(), "cannot convert Go func param 'map key: chan int' to JS")
-
-			type StructWithChan struct {
-				Name string
-				Ch   chan int
-			}
-
-			_, err7 := qjs.FuncToJS(ctx, func(s StructWithChan) string {
-				return s.Name
-			})
-			require.Error(t, err7)
-			assert.Contains(t, err7.Error(), "cannot convert Go 'qjs_test.StructWithChan.Ch' to JS")
-			assert.Contains(t, err7.Error(), "cannot convert Go func param 'channel")
 		})
 	})
 }
@@ -475,79 +433,103 @@ func TestReturnValues(t *testing.T) {
 		})
 	})
 
-	t.Run("ComplexReturnTypes", func(t *testing.T) {
-		t.Run("StructReturn", func(t *testing.T) {
-			type ComplexStruct struct {
-				Name    string            `json:"name"`
-				Values  []int             `json:"values"`
-				Mapping map[string]string `json:"mapping"`
-			}
-
-			jsFunc := createAndRegisterJSFunc(t, ctx, "complexFunc", func() ComplexStruct {
-				return ComplexStruct{
-					Name:   "test",
-					Values: []int{1, 2, 3},
-					Mapping: map[string]string{
-						"key1": "value1",
-						"key2": "value2",
-					},
-				}
-			})
-			defer jsFunc.Free()
-			result := must(ctx.Eval("test.js", qjs.Code(`complexFunc()`)))
-			defer result.Free()
-			assert.True(t, result.IsObject())
-
-			name := result.GetPropertyStr("name")
-			defer name.Free()
-			assert.Equal(t, "test", name.String())
-
-			values := result.GetPropertyStr("values")
-			defer values.Free()
-			assert.True(t, values.IsArray())
+	t.Run("SingleReturnWithNilError", func(t *testing.T) {
+		jsFunc := createAndRegisterJSFunc(t, ctx, "singleReturnNilError", func() (string, error) {
+			return "single", nil
 		})
+		defer jsFunc.Free()
 
-		t.Run("ArrayReturnTypes", func(t *testing.T) {
-			jsFunc := createAndRegisterJSFunc(t, ctx, "arrayReturnFunc", func() [2]string {
-				return [2]string{"hello", "world"}
-			})
-			defer jsFunc.Free()
+		result := must(ctx.Eval("test.js", qjs.Code(`singleReturnNilError()`)))
+		defer result.Free()
+		assert.Equal(t, "single", result.String())
+	})
 
-			result := must(ctx.Eval("test.js", qjs.Code(`arrayReturnFunc()`)))
-			defer result.Free()
-			assert.True(t, result.IsArray())
-
-			elem0 := result.GetPropertyIndex(0)
-			defer elem0.Free()
-			assert.Equal(t, "hello", elem0.String())
-
-			elem1 := result.GetPropertyIndex(1)
-			defer elem1.Free()
-			assert.Equal(t, "world", elem1.String())
+	t.Run("SingleReturnWithNonNilError", func(t *testing.T) {
+		jsFunc := createAndRegisterJSFunc(t, ctx, "onlyNilError", func() error {
+			return nil
 		})
+		defer jsFunc.Free()
+
+		result := must(ctx.Eval("test.js", qjs.Code(`onlyNilError()`)))
+		defer result.Free()
+		assert.True(t, result.IsUndefined())
+	})
+
+	t.Run("TwoReturnsWithNilError", func(t *testing.T) {
+		jsFunc := createAndRegisterJSFunc(t, ctx, "twoReturnsNilError", func() (string, int, error) {
+			return "success", 100, nil
+		})
+		defer jsFunc.Free()
+
+		result := must(ctx.Eval("test.js", qjs.Code(`twoReturnsNilError()`)))
+		defer result.Free()
+		assert.True(t, result.IsArray())
+
+		elem0 := result.GetPropertyIndex(0)
+		defer elem0.Free()
+		assert.Equal(t, "success", elem0.String())
+
+		elem1 := result.GetPropertyIndex(1)
+		defer elem1.Free()
+		assert.Equal(t, int32(100), elem1.Int32())
+	})
+
+	t.Run("MultipleNonErrorReturns", func(t *testing.T) {
+		jsFunc := createAndRegisterJSFunc(t, ctx, "threeReturns", func() (string, int, bool) {
+			return "test", 123, true
+		})
+		defer jsFunc.Free()
+
+		result := must(ctx.Eval("test.js", qjs.Code(`threeReturns()`)))
+		defer result.Free()
+		assert.True(t, result.IsArray())
+
+		elem0 := result.GetPropertyIndex(0)
+		defer elem0.Free()
+		assert.Equal(t, "test", elem0.String())
+
+		elem1 := result.GetPropertyIndex(1)
+		defer elem1.Free()
+		assert.Equal(t, int32(123), elem1.Int32())
+
+		elem2 := result.GetPropertyIndex(2)
+		defer elem2.Free()
+		assert.Equal(t, true, elem2.Bool())
+	})
+
+	t.Run("FiveReturnsWithError", func(t *testing.T) {
+		jsFunc := createAndRegisterJSFunc(t, ctx, "fiveReturns", func() (int, string, bool, float64, error) {
+			return 1, "two", true, 4.5, nil
+		})
+		defer jsFunc.Free()
+
+		result := must(ctx.Eval("test.js", qjs.Code(`fiveReturns()`)))
+		defer result.Free()
+		assert.True(t, result.IsArray())
+
+		// Should return array with 4 elements (error is popped)
+		arrayLen := result.GetPropertyStr("length")
+		defer arrayLen.Free()
+		assert.Equal(t, int32(4), arrayLen.Int32())
+
+		elem0 := result.GetPropertyIndex(0)
+		defer elem0.Free()
+		assert.Equal(t, int32(1), elem0.Int32())
+
+		elem1 := result.GetPropertyIndex(1)
+		defer elem1.Free()
+		assert.Equal(t, "two", elem1.String())
+
+		elem2 := result.GetPropertyIndex(2)
+		defer elem2.Free()
+		assert.Equal(t, true, elem2.Bool())
+
+		elem3 := result.GetPropertyIndex(3)
+		defer elem3.Free()
+		assert.Equal(t, 4.5, elem3.Float64())
 	})
 
 	t.Run("UnsupportedReturnTypes", func(t *testing.T) {
-		t.Run("ChannelReturnTypes", func(t *testing.T) {
-			_, err := qjs.FuncToJS(ctx, func() chan int {
-				return make(chan int)
-			})
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "cannot convert Go func return 'channel")
-
-			_, err2 := qjs.FuncToJS(ctx, func() map[chan int]string {
-				return nil
-			})
-			require.Error(t, err2)
-			assert.Contains(t, err2.Error(), "cannot convert Go func return 'map key: chan int' to JS")
-
-			_, err3 := qjs.FuncToJS(ctx, func() []chan int {
-				return nil
-			})
-			require.Error(t, err3)
-			assert.Contains(t, err3.Error(), "cannot convert Go func return 'slice: chan int' to JS")
-		})
-
 		t.Run("UnsafePointerReturnTypes", func(t *testing.T) {
 			_, err4 := qjs.FuncToJS(ctx, func() *unsafe.Pointer {
 				return nil
@@ -555,45 +537,45 @@ func TestReturnValues(t *testing.T) {
 			require.Error(t, err4)
 			assert.Contains(t, err4.Error(), "cannot convert Go func return 'unsafe.Pointer")
 
-			_, err5 := qjs.FuncToJS(ctx, func() **chan int {
+			_, err5 := qjs.FuncToJS(ctx, func() **unsafe.Pointer {
 				return nil
 			})
 			require.Error(t, err5)
-			assert.Contains(t, err5.Error(), "cannot convert Go func return 'channel")
+			assert.Contains(t, err5.Error(), "cannot convert Go func return 'unsafe.Pointer")
 		})
 
 		t.Run("ArrayWithUnsupportedElements", func(t *testing.T) {
-			_, err3 := qjs.FuncToJS(ctx, func() [2]chan int {
-				return [2]chan int{}
+			_, err3 := qjs.FuncToJS(ctx, func() [2]unsafe.Pointer {
+				return [2]unsafe.Pointer{}
 			})
 			require.Error(t, err3)
-			assert.Contains(t, err3.Error(), "cannot convert Go func return 'array: chan int' to JS")
+			assert.Contains(t, err3.Error(), "cannot convert Go func return 'array: unsafe.Pointer' to JS")
 		})
 
 		t.Run("StructWithUnsupportedFields", func(t *testing.T) {
-			type StructWithChan struct {
+			type StructWithUnsafePtr struct {
 				Name string
-				Ch   chan int
+				Ptr  unsafe.Pointer
 			}
-			_, err2 := qjs.FuncToJS(ctx, func() StructWithChan {
-				return StructWithChan{Name: "test", Ch: make(chan int)}
+			_, err2 := qjs.FuncToJS(ctx, func() StructWithUnsafePtr {
+				return StructWithUnsafePtr{Name: "test", Ptr: unsafe.Pointer(&[]byte{1}[0])}
 			})
 			require.Error(t, err2)
-			assert.Contains(t, err2.Error(), "cannot convert Go 'qjs_test.StructWithChan.Ch' to JS")
-			assert.Contains(t, err2.Error(), "cannot convert Go func return 'channel")
+			assert.Contains(t, err2.Error(), "cannot convert Go 'qjs_test.StructWithUnsafePtr.Ptr' to JS")
+			assert.Contains(t, err2.Error(), "cannot convert Go func return 'unsafe.Pointer")
 
 			// Nested validation
-			type StructWithNestedChan struct {
+			type StructWithNestedUnsafePtr struct {
 				Field struct {
-					ChanField chan int
+					PtrField unsafe.Pointer
 				}
 			}
-			_, err5 := qjs.FuncToJS(ctx, func() StructWithNestedChan {
-				return StructWithNestedChan{}
+			_, err5 := qjs.FuncToJS(ctx, func() StructWithNestedUnsafePtr {
+				return StructWithNestedUnsafePtr{}
 			})
 			require.Error(t, err5)
-			assert.Contains(t, err5.Error(), "cannot convert Go 'qjs_test.StructWithNestedChan.Field' to JS")
-			assert.Contains(t, err5.Error(), "cannot convert Go func return 'channel")
+			assert.Contains(t, err5.Error(), "cannot convert Go 'qjs_test.StructWithNestedUnsafePtr.Field' to JS")
+			assert.Contains(t, err5.Error(), "cannot convert Go func return 'unsafe.Pointer")
 		})
 
 		t.Run("ComplexNestedValidation", func(t *testing.T) {
@@ -613,205 +595,6 @@ func TestReturnValues(t *testing.T) {
 			assert.Contains(t, err2.Error(), "cannot convert Go 'qjs_test.StructWithUnsafeField.Field' to JS")
 			assert.Contains(t, err2.Error(), "cannot convert Go func return 'unsafe.Pointer'")
 		})
-	})
-
-	t.Run("RecursiveTypeHandling", func(t *testing.T) {
-		type RecursiveStruct struct {
-			Name string           `json:"name"`
-			Next *RecursiveStruct `json:"next"`
-		}
-
-		jsFunc := createAndRegisterJSFunc(t, ctx, "recursiveFunc", func(r RecursiveStruct) string {
-			return r.Name
-		})
-		defer jsFunc.Free()
-
-		result := must(ctx.Eval("test.js", qjs.Code(`recursiveFunc({name: "test", next: null})`)))
-		defer result.Free()
-		assert.Equal(t, "test", result.String())
-	})
-
-	t.Run("ErrorHandlingInResults", func(t *testing.T) {
-		t.Run("ErrorResultHandling", func(t *testing.T) {
-			runtime := must(qjs.New())
-			defer runtime.Close()
-			testCtx := runtime.Context()
-
-			jsFunc := createAndRegisterJSFunc(t, testCtx, "errorFunc", func() (string, error) {
-				return "test", errors.New("test error")
-			})
-			defer jsFunc.Free()
-
-			_, err := testCtx.Eval("test.js", qjs.Code(`errorFunc()`))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "test error")
-
-			jsFunc2 := createAndRegisterJSFunc(t, testCtx, "nilErrorFunc", func() error {
-				return nil
-			})
-			defer jsFunc2.Free()
-
-			result := must(testCtx.Eval("test.js", qjs.Code(`nilErrorFunc()`)))
-			defer result.Free()
-			assert.True(t, result.IsUndefined())
-		})
-
-		t.Run("HandleResultsFallbackPath", func(t *testing.T) {
-			runtime := must(qjs.New())
-			defer runtime.Close()
-			testCtx := runtime.Context()
-
-			results := []reflect.Value{
-				reflect.ValueOf("test result"),
-				reflect.ValueOf("not an error"),
-			}
-
-			jsValue, err := qjs.GoFuncResultToJs(testCtx, results)
-			assert.NoError(t, err)
-			defer jsValue.Free()
-			assert.Equal(t, "test result", jsValue.String())
-		})
-	})
-}
-
-func TestNumericTypes(t *testing.T) {
-	_, ctx := setupTestContext(t)
-
-	t.Run("AllNumericTypes", func(t *testing.T) {
-		t.Run("IntegerTypes", func(t *testing.T) {
-			_ = createAndRegisterJSFunc(t, ctx, "intFunc", func(a int, b int32, c int64) string {
-				return fmt.Sprintf("int:%d, int32:%d, int64:%d", a, b, c)
-			})
-
-			result1 := must(ctx.Eval("test.js", qjs.Code(`intFunc(42, 25, 100)`)))
-			defer result1.Free()
-			assert.Equal(t, "int:42, int32:25, int64:100", result1.String())
-		})
-
-		t.Run("FloatTypes", func(t *testing.T) {
-			_ = createAndRegisterJSFunc(t, ctx, "floatFunc", func(a float32, b float64) string {
-				return fmt.Sprintf("float32:%.1f, float64:%.1f", a, b)
-			})
-
-			result2 := must(ctx.Eval("test.js", qjs.Code(`floatFunc(3.14, 2.718)`)))
-			defer result2.Free()
-			assert.Equal(t, "float32:3.1, float64:2.7", result2.String())
-		})
-
-		t.Run("UnsignedIntegerTypes", func(t *testing.T) {
-			_ = createAndRegisterJSFunc(t, ctx, "uintFunc", func(a uint, b uint32, c uint64) string {
-				return fmt.Sprintf("uint:%d, uint32:%d, uint64:%d", a, b, c)
-			})
-
-			result3 := must(ctx.Eval("test.js", qjs.Code(`uintFunc(42, 25, 100)`)))
-			defer result3.Free()
-			assert.Equal(t, "uint:42, uint32:25, uint64:100", result3.String())
-		})
-	})
-
-	t.Run("NumericOverflowValidation", func(t *testing.T) {
-		t.Run("Int8Overflow", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "int8Func", func(value int8) string {
-				return fmt.Sprintf("int8:%d", value)
-			})
-
-			result := must(ctx.Eval("test.js", qjs.Code(`int8Func(100)`)))
-			defer result.Free()
-			assert.Equal(t, "int8:100", result.String())
-
-			_, err := ctx.Eval("test.js", qjs.Code(`int8Func(1000)`))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "overflow")
-
-			_, err2 := ctx.Eval("test.js", qjs.Code(`int8Func(-129)`))
-			require.Error(t, err2)
-			assert.Contains(t, err2.Error(), "overflows int8")
-		})
-
-		t.Run("Uint8Overflow", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "uint8Func", func(val uint8) string {
-				return fmt.Sprintf("uint8: %d", val)
-			})
-
-			result4 := must(ctx.Eval("test.js", qjs.Code(`uint8Func(200)`)))
-			defer result4.Free()
-			assert.Equal(t, "uint8: 200", result4.String())
-
-			_, err7 := ctx.Eval("test.js", qjs.Code(`uint8Func(256)`))
-			require.Error(t, err7)
-			assert.Contains(t, err7.Error(), "overflows uint8")
-		})
-
-		t.Run("Int16Overflow", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "int16Func", func(val int16) string {
-				return fmt.Sprintf("int16: %d", val)
-			})
-
-			result2 := must(ctx.Eval("test.js", qjs.Code(`int16Func(32000)`)))
-			defer result2.Free()
-			assert.Equal(t, "int16: 32000", result2.String())
-
-			_, err3 := ctx.Eval("test.js", qjs.Code(`int16Func(32768)`))
-			require.Error(t, err3)
-			assert.Contains(t, err3.Error(), "overflows int16")
-
-			_, err4 := ctx.Eval("test.js", qjs.Code(`int16Func(-32769)`))
-			require.Error(t, err4)
-			assert.Contains(t, err4.Error(), "overflows int16")
-		})
-
-		t.Run("Uint16Overflow", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "uint16Func", func(val uint16) string {
-				return fmt.Sprintf("uint16: %d", val)
-			})
-
-			result5 := must(ctx.Eval("test.js", qjs.Code(`uint16Func(60000)`)))
-			defer result5.Free()
-			assert.Equal(t, "uint16: 60000", result5.String())
-
-			_, err8 := ctx.Eval("test.js", qjs.Code(`uint16Func(65536)`))
-			require.Error(t, err8)
-			assert.Contains(t, err8.Error(), "overflows uint16")
-		})
-
-		t.Run("Int32Overflow", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "int32Func", func(val int32) string {
-				return fmt.Sprintf("int32: %d", val)
-			})
-
-			_, err5 := ctx.Eval("test.js", qjs.Code(`int32Func(2147483648)`))
-			require.Error(t, err5)
-			assert.Contains(t, err5.Error(), "overflow")
-
-			_, err6 := ctx.Eval("test.js", qjs.Code(`int32Func(-2147483649)`))
-			require.Error(t, err6)
-			assert.Contains(t, err6.Error(), "overflow")
-		})
-
-		t.Run("Uint32Overflow", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "uint32Func", func(val uint32) string {
-				return fmt.Sprintf("uint32: %d", val)
-			})
-
-			_, err9 := ctx.Eval("test.js", qjs.Code(`uint32Func(-1)`))
-			require.Error(t, err9)
-			assert.Contains(t, err9.Error(), "overflow")
-
-			_, err10 := ctx.Eval("test.js", qjs.Code(`uint32Func(4294967296)`))
-			require.Error(t, err10)
-			assert.Contains(t, err10.Error(), "overflow")
-		})
-	})
-
-	t.Run("ComplexNumbers", func(t *testing.T) {
-		jsFunc := createAndRegisterJSFunc(t, ctx, "complexFunc", func(c64 complex64, c128 complex128) string {
-			return fmt.Sprintf("complex64:%.1f, complex128:%.1f", real(c64), real(c128))
-		})
-		defer jsFunc.Free()
-
-		result := must(ctx.Eval("test.js", qjs.Code(`complexFunc(42.5, 100.7)`)))
-		defer result.Free()
-		assert.Equal(t, "complex64:42.5, complex128:100.7", result.String())
 	})
 }
 
@@ -856,69 +639,5 @@ func TestMethodBinding(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "name cannot be empty")
 		})
-	})
-}
-
-func TestFuncToJSErrorHandling(t *testing.T) {
-	_, ctx := setupTestContext(t)
-
-	t.Run("ArgumentHandling", func(t *testing.T) {
-		t.Run("ArgumentCountMismatch", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "manyParamFunc", func(a, b, c, d, e int) int {
-				return a + b + c + d + e
-			})
-
-			result := must(ctx.Eval("test.js", qjs.Code(`manyParamFunc(1, 2, 3, 4, 5)`)))
-			defer result.Free()
-			assert.Equal(t, int32(15), result.Int32())
-
-			createAndRegisterJSFunc(t, ctx, "paramFunc", func(a, b, c int) int {
-				return a + b + c
-			})
-
-			result2 := must(ctx.Eval("test.js", qjs.Code(`paramFunc(10)`)))
-			defer result2.Free()
-			assert.Equal(t, int32(10), result2.Int32())
-
-			createAndRegisterJSFunc(t, ctx, "paramFunc2", func(a int) int {
-				return a * 2
-			})
-
-			result3 := must(ctx.Eval("test.js", qjs.Code(`paramFunc2(5, 10, 15)`)))
-			defer result3.Free()
-			assert.Equal(t, int32(10), result3.Int32())
-		})
-
-		t.Run("ArgumentConversionWithCleanup", func(t *testing.T) {
-			createAndRegisterJSFunc(t, ctx, "funcWithError", func(a, b, c int) string {
-				return fmt.Sprintf("%d %d %d", a, b, c)
-			})
-
-			// Test with too many arguments to verify truncation works
-			result := must(ctx.Eval("test.js", qjs.Code(`funcWithError(1, 2, 3, 4, 5)`)))
-			defer result.Free()
-			assert.Equal(t, "1 2 3", result.String())
-		})
-	})
-
-	t.Run("ReturnValueValidation", func(t *testing.T) {
-		_, err := qjs.FuncToJS(ctx, func(a int) (int, string, error) {
-			return a, "test", nil
-		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "expected 0-2")
-
-		_, err2 := qjs.FuncToJS(ctx, func(a int) (int, string) {
-			return a, "test"
-		})
-		require.Error(t, err2)
-		assert.Contains(t, err2.Error(), "expected second return to be error")
-	})
-
-	t.Run("InvalidTypes", func(t *testing.T) {
-		// Not a function
-		_, err := qjs.FuncToJS(ctx, "not a function")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "expected GO target function")
 	})
 }

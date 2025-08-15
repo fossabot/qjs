@@ -19,8 +19,6 @@ const (
 	NanosToMillis = 1e6
 	// The size of a uint64 value in bytes.
 	Uint64ByteSize = 8
-	// The maximum number of return values allowed for Go functions bind to JS.
-	MaxGoFuncReturnValues = 2
 	// The bit position of the sign bit in a 64-bit unsigned integer.
 	Uint64SignBitPosition = 63
 	// The size in bytes of a packed pointer structure.
@@ -523,8 +521,22 @@ func FloatToInt(floatVal float64, targetKind reflect.Kind) (any, error) {
 	return result, nil
 }
 
+func IsValid32BitFloat(floatVal float64, targetKind reflect.Kind) error {
+	var bounds [2]float64
+	if targetKind == reflect.Int {
+		bounds = [2]float64{math.MinInt32, math.MaxInt32}
+	} else {
+		bounds = [2]float64{0, math.MaxUint32}
+	}
+
+	if floatVal < bounds[0] || floatVal > bounds[1] {
+		return newOverflowErr(floatVal, targetKind.String())
+	}
+
+	return nil
+}
+
 func NumericBoundsCheck(floatVal float64, targetKind reflect.Kind) error {
-	// Check bounds
 	if bounds, ok := numericBounds[targetKind]; ok {
 		if floatVal < bounds[0] || floatVal > bounds[1] {
 			return newOverflowErr(floatVal, targetKind.String())
@@ -534,16 +546,7 @@ func NumericBoundsCheck(floatVal float64, targetKind reflect.Kind) error {
 	// Special handling for int/uint on 32-bit platforms
 	isIntUint := targetKind == reflect.Int || targetKind == reflect.Uint
 	if isIntUint && Is32BitPlatform() {
-		var bounds [2]float64
-		if targetKind == reflect.Int {
-			bounds = [2]float64{math.MinInt32, math.MaxInt32}
-		} else {
-			bounds = [2]float64{0, math.MaxUint32}
-		}
-
-		if floatVal < bounds[0] || floatVal > bounds[1] {
-			return newOverflowErr(floatVal, targetKind.String())
-		}
+		return IsValid32BitFloat(floatVal, targetKind)
 	}
 
 	return nil
@@ -569,8 +572,8 @@ func processTempValue[T any](prefix string, temp any, err error, samples ...T) (
 	// Handle interface{} target types by accepting any converted value
 	_, sample := createTemp(samples...)
 
-	tSample := reflect.TypeOf(sample)
-	if tSample == nil || tSample.Kind() == reflect.Interface {
+	sampleRType := reflect.TypeOf(sample)
+	if sampleRType == nil || sampleRType.Kind() == reflect.Interface {
 		if temp == nil {
 			return v, nil
 		}
@@ -580,7 +583,16 @@ func processTempValue[T any](prefix string, temp any, err error, samples ...T) (
 		return tempT, nil
 	}
 
-	if reflect.TypeOf(temp) != tSample {
+	tempRType := reflect.TypeOf(temp)
+	if tempRType != sampleRType {
+		tempRValue := reflect.ValueOf(temp)
+		if tempRValue.IsValid() && tempRValue.Type().ConvertibleTo(sampleRType) {
+			temp = tempRValue.Convert(sampleRType).Interface()
+			tempT, _ := temp.(T)
+
+			return tempT, nil
+		}
+
 		return v, newInvalidGoTargetErr(GetGoTypeName(sample), temp)
 	}
 
@@ -589,7 +601,7 @@ func processTempValue[T any](prefix string, temp any, err error, samples ...T) (
 	return valueT, nil
 }
 
-func StringToNumeric(s string, targetType reflect.Type) (any, error) {
+func StringToNumeric(s string, targetType reflect.Type) (result any, err error) {
 	s = strings.TrimSpace(s)
 
 	if targetType.Kind() == reflect.Ptr {
@@ -754,22 +766,39 @@ func isGoStruct(goType reflect.Type) bool {
 		(goType.Kind() == reflect.Ptr && goType.Elem().Kind() == reflect.Struct)
 }
 
-func CreateGoBindFuncType[T any](sample T) (reflect.Type, error) {
-	var fnType reflect.Type
+// VerifyGoFunc validates that a function signature is compatible with JS conversion.
+func VerifyGoFunc(fnType reflect.Type, sample any) error {
+	if fnType == nil || fnType.Kind() != reflect.Func {
+		return newInvalidGoTargetErr("function", sample)
+	}
 
-	sampleVal := reflect.ValueOf(sample)
-	if sampleVal.IsValid() {
-		if sampleVal.Kind() == reflect.Func {
-			fnType = sampleVal.Type()
+	// Validate that all return values are convertible to JS
+	for i := range fnType.NumOut() {
+		err := IsConvertibleToJs(fnType.Out(i), make(map[reflect.Type]bool), "func return")
+		if err != nil {
+			return err
 		}
 	}
 
-	if fnType == nil || fnType.Kind() != reflect.Func {
-		return fnType, newInvalidGoTargetErr("function", sample)
+	// Validate that all parameters are convertible from JS
+	for i := range fnType.NumIn() {
+		err := IsConvertibleToJs(fnType.In(i), make(map[reflect.Type]bool), "func param")
+		if err != nil {
+			return fmt.Errorf("parameter %d error: %w", i, err)
+		}
 	}
 
-	if fnType.NumOut() != 2 || fnType.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-		return fnType, newInvalidGoTargetErr("function with two return values (result, error)", sample)
+	return nil
+}
+
+func CreateGoBindFuncType[T any](sample T) (fnType reflect.Type, err error) {
+	sampleVal := reflect.ValueOf(sample)
+	if sampleVal.IsValid() && sampleVal.Kind() == reflect.Func {
+		fnType = sampleVal.Type()
+	}
+
+	if err = VerifyGoFunc(fnType, sample); err != nil {
+		return fnType, err
 	}
 
 	return fnType, nil
@@ -844,4 +873,113 @@ func ParseTimezone(tz string) *time.Location {
 // Check if the platform is 32-bit by comparing the size of uintptr.
 func Is32BitPlatform() bool {
 	return strconv.IntSize == 32
+}
+
+// ChannelToJSObjectValue converts a Go channel to a JavaScript object with async methods.
+func ChannelToJSObjectValue(
+	c *Context,
+	rtype reflect.Type,
+	rval reflect.Value,
+) (*Value, error) {
+	if rval.IsNil() {
+		return c.NewNull(), nil
+	}
+
+	return withJSObject(c, func(obj *Value) error {
+		// Check channel direction
+		chanDir := rtype.ChanDir()
+		canSend := chanDir == reflect.BothDir || chanDir == reflect.SendDir
+		canRecv := chanDir == reflect.BothDir || chanDir == reflect.RecvDir
+		objMethods := map[string]any{
+			"close":    CreateChannelCloseFunc(rval),
+			"length":   func() int { return rval.Len() },
+			"capacity": func() int { return rval.Cap() },
+		}
+
+		obj.SetPropertyStr("type", c.NewString("channel"))
+		obj.SetPropertyStr("elementType", c.NewString(GetGoTypeName(rtype.Elem())))
+		obj.SetPropertyStr("canSend", c.NewBool(canSend))
+		obj.SetPropertyStr("canReceive", c.NewBool(canRecv))
+
+		if canSend {
+			objMethods["send"] = CreateChannelSendFunc(rval)
+		}
+
+		if canRecv {
+			objMethods["receive"] = CreateChannelReceiveFunc(rval)
+		}
+
+		for name, method := range objMethods {
+			// Skip error check since we know the function signatures are correct
+			jsMethod, _ := FuncToJS(c, method)
+			obj.SetPropertyStr(name, jsMethod)
+		}
+
+		return nil
+	})
+}
+
+// CreateChannelSendFunc creates 'func(T) error' for sending T to a channel.
+func CreateChannelSendFunc(chanRValue reflect.Value) any {
+	errValue := ErrZeroRValue
+	chanElemRType := chanRValue.Type().Elem()
+	funcRType := reflect.FuncOf(
+		[]reflect.Type{chanElemRType}, // params
+		[]reflect.Type{ErrRType},      // returns
+		false,                         // variadic
+	)
+
+	fn := reflect.MakeFunc(funcRType, func(args []reflect.Value) []reflect.Value {
+		valueToSend := args[0]
+		chosen, _, _ := reflect.Select([]reflect.SelectCase{
+			{Dir: reflect.SelectSend, Chan: chanRValue, Send: valueToSend},
+			{Dir: reflect.SelectDefault},
+		})
+
+		// Default case was chosen - send would block
+		if chosen == 1 {
+			errValue = reflect.ValueOf(ErrChanSend)
+		}
+
+		return []reflect.Value{errValue}
+	})
+
+	// Successful send
+	return fn.Interface()
+}
+
+// CreateChannelReceiveFunc creates a function for receiving values from a channel.
+func CreateChannelReceiveFunc(chanRValue reflect.Value) func() (any, error) {
+	return func() (any, error) {
+		chosen, recv, ok := reflect.Select([]reflect.SelectCase{
+			{Dir: reflect.SelectRecv, Chan: chanRValue},
+			{Dir: reflect.SelectDefault},
+		})
+
+		// First: Check default case was chosen - no data available
+		if chosen == 1 {
+			return nil, ErrChanReceive
+		}
+
+		// Receive case was chosen but channel is closed
+		if !ok {
+			return nil, ErrChanClosed
+		}
+
+		// Successful receive
+		return recv.Interface(), nil
+	}
+}
+
+// CreateChannelCloseFunc creates a function for closing a channel.
+func CreateChannelCloseFunc(rval reflect.Value) func() error {
+	return func() error {
+		// Only close if it's a send or bidirectional channel
+		if rval.Type().ChanDir() == reflect.RecvDir {
+			return fmt.Errorf("cannot close receive-only channel")
+		}
+
+		rval.Close()
+		return nil
+	}
 }

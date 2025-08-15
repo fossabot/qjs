@@ -23,12 +23,10 @@ func (tracker *Tracker[T]) ToJSValue(c *Context, v any) (*Value, error) {
 		return c.NewError(err), nil
 	}
 
-	// Fast path for common types
 	if jsVal := tryConvertBuiltinTypes(c, v); jsVal != nil {
 		return jsVal, nil
 	}
 
-	// Numeric types handling - consolidated
 	if jsVal := tryConvertNumeric(c, v); jsVal != nil {
 		return jsVal, nil
 	}
@@ -65,8 +63,7 @@ func (tracker *Tracker[T]) StructToJSObjectValue(
 			return err
 		}
 
-		// For methods, use the original type and value
-		// to preserve pointer receiver methods
+		// For methods, use the original type and value to preserve pointer receiver methods
 		return tracker.addStructMethodsToObject(c, obj, rtype, rval)
 	})
 }
@@ -161,27 +158,23 @@ func GoComplexToJS[T complex64 | complex128](c *Context, z T) *Value {
 	return obj
 }
 
-// Backward compatibility functions for the old API
-
 // StructToJSObjectValue provides backward compatibility for the old API.
-func StructToJSObjectValue(c *Context, rtype reflect.Type, rval reflect.Value) (*Value, error) {
-	ctx := NewTracker[uint64]()
-
-	return ctx.StructToJSObjectValue(c, rtype, rval)
+func StructToJSObjectValue(
+	c *Context,
+	rtype reflect.Type,
+	rval reflect.Value,
+) (*Value, error) {
+	return NewTracker[uint64]().StructToJSObjectValue(c, rtype, rval)
 }
 
 // SliceToArrayValue provides backward compatibility for the old API.
 func SliceToArrayValue(c *Context, rval reflect.Value) (*Value, error) {
-	ctx := NewTracker[uint64]()
-
-	return ctx.SliceToArrayValue(c, rval)
+	return NewTracker[uint64]().SliceToArrayValue(c, rval)
 }
 
 // MapToObjectValue provides backward compatibility for the old API.
 func MapToObjectValue(c *Context, rval reflect.Value) (*Value, error) {
-	ctx := NewTracker[uint64]()
-
-	return ctx.MapToObjectValue(c, rval)
+	return NewTracker[uint64]().MapToObjectValue(c, rval)
 }
 
 // tryConvertBuiltinTypes handles built-in Go types that don't require reflection.
@@ -285,20 +278,9 @@ func (tracker *Tracker[T]) convertReflectValue(c *Context, v any) (*Value, error
 	}
 
 	switch rtype.Kind() {
-	// Unreachable code
-	// case reflect.Invalid:
-	// 	return c.NewNull(), nil
 	case reflect.Func:
 		return FuncToJS(c, v)
 	case reflect.Struct:
-		// Unreachable code
-		// Circular reference check for addressable structs
-		// if rval.CanAddr() {
-		// 	var addr any = rval.UnsafeAddr()
-		// 	if err := tracker.trackPtr(ctx, addr.(T)); err != nil {
-		// 		return nil, newGoToJsErr(GetGoTypeName(reflect.TypeOf(v)), err, "recursive pointer")
-		// 	}
-		// }
 		return tracker.StructToJSObjectValue(c, rtype, rval)
 	case reflect.Slice:
 		if rval.IsNil() {
@@ -314,15 +296,8 @@ func (tracker *Tracker[T]) convertReflectValue(c *Context, v any) (*Value, error
 		return tracker.MapToObjectValue(c, rval)
 	case reflect.Array:
 		return tracker.ArrayToArrayValue(c, rval)
-	// Unreachable code
-	// case reflect.Interface:
-	// 	if rval.IsNil() {
-	// 		return c.NewNull(), nil
-	// 	}
-
-	// 	return ctx.ToJSValue(c, rval.Elem().Interface())
 	case reflect.Chan:
-		return nil, newGoToJsErr("channel: "+GetGoTypeName(rtype), nil)
+		return ChannelToJSObjectValue(c, rtype, rval)
 	case reflect.UnsafePointer:
 		return nil, newGoToJsErr(GetGoTypeName(rtype), nil)
 
@@ -423,10 +398,6 @@ func (tracker *Tracker[T]) processEmbeddedPointer(
 	fieldType reflect.Type,
 	fieldValue reflect.Value,
 ) error {
-	if fieldValue.IsNil() {
-		return nil
-	}
-
 	elem := fieldValue.Elem()
 	if elem.Kind() == reflect.Struct {
 		// Embedded pointer to struct: recursively process struct fields

@@ -105,7 +105,7 @@ func IsConvertibleToJs(rType reflect.Type, visited map[reflect.Type]bool, detail
 
 	switch rType.Kind() {
 	case reflect.Chan:
-		return newGoToJsErr("channel: "+GetGoTypeName(rType), nil, detail)
+		return nil
 	case reflect.UnsafePointer:
 		return newGoToJsErr("unsafe.Pointer", nil, detail)
 	case reflect.Func:

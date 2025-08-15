@@ -634,9 +634,13 @@ func handleJsFunctionResult(
 	fnType reflect.Type,
 	results []reflect.Value,
 ) []reflect.Value {
+	numOut := fnType.NumOut()
+
 	if jsResult.IsUndefined() || jsResult.IsNull() {
 		results[0] = reflect.Zero(fnType.Out(0))
-		results[1] = reflect.Zero(fnType.Out(1))
+		if numOut == 2 {
+			results[1] = reflect.Zero(fnType.Out(1))
+		}
 
 		return results
 	}
@@ -663,7 +667,9 @@ func handleJsFunctionResult(
 	}
 
 	results[0] = goResultValue.Convert(targetType)
-	results[1] = reflect.Zero(fnType.Out(1))
+	if numOut == 2 {
+		results[1] = reflect.Zero(fnType.Out(1))
+	}
 
 	return results
 }
@@ -741,27 +747,25 @@ func jsPrimitivesToGo[T any](
 	tracker *Tracker[uint64],
 	input *Value,
 	sample T,
-) (any, bool, error) {
+) (val any, ok bool, err error) {
 	if input.IsString() {
 		result, err := jsStringToGo(input, sample)
-
 		return result, true, err
 	}
 
 	if input.IsBigInt() {
 		result, err := JsBigIntToGo(input, sample)
-
 		return result, true, err
 	}
 
 	if input.IsNumber() {
 		result, err := JsNumberToGo(input, sample)
-
 		return result, true, err
 	}
 
 	if input.IsBool() {
-		return input.Bool(), true, nil
+		val, err := processTempValue("JsBigIntToGo", input.Bool(), nil, true)
+		return val, true, err
 	}
 
 	if input.IsError() {
@@ -778,7 +782,6 @@ func jsPrimitivesToGo[T any](
 
 	if input.IsFunction() {
 		result, err := jsFuncToGo(tracker, input, sample)
-
 		return result, true, err
 	}
 
@@ -797,6 +800,15 @@ func jsStringToGo[T any](input *Value, sample T) (any, error) {
 
 		if targetType.Kind() == reflect.Bool {
 			return stringVal != "", nil
+		}
+
+		// Handle string-based custom types
+		if targetType.Kind() == reflect.String {
+			// Convert string to custom string type using reflection
+			stringValue := reflect.ValueOf(stringVal)
+			if stringValue.Type().ConvertibleTo(targetType) {
+				return stringValue.Convert(targetType).Interface(), nil
+			}
 		}
 	}
 

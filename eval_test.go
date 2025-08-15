@@ -179,6 +179,14 @@ func runEvalTests(t *testing.T, tests []evalTest, basePath string) {
 }
 
 func runCompileTests(t *testing.T, tests []evalTest, basePath string) {
+	t.Run("compile_error", func(t *testing.T) {
+		rt := must(qjs.New())
+		defer rt.Close()
+
+		_, err := rt.Compile("compile_error.js", qjs.Code("const a = ("))
+		assert.Error(t, err)
+	})
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			rt := must(qjs.New())
