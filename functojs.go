@@ -178,6 +178,7 @@ func GoFuncResultToJs(c *Context, results []reflect.Value) (*Value, error) {
 		if !lastResult.IsNil() {
 			resultErr, _ := lastResult.Interface().(error)
 			c.ThrowError(resultErr)
+
 			return nil, nil
 		}
 
@@ -198,6 +199,7 @@ func GoFuncResultToJs(c *Context, results []reflect.Value) (*Value, error) {
 		for i, result := range remaining {
 			jsValues[i] = result.Interface()
 		}
+
 		return ToJSValue(c, jsValues)
 	}
 
@@ -211,5 +213,6 @@ func GoFuncResultToJs(c *Context, results []reflect.Value) (*Value, error) {
 	for i, result := range results {
 		jsValues[i] = result.Interface()
 	}
+
 	return ToJSValue(c, jsValues)
 }

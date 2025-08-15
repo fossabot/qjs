@@ -892,8 +892,8 @@ func ChannelToJSObjectValue(
 		canRecv := chanDir == reflect.BothDir || chanDir == reflect.RecvDir
 		objMethods := map[string]any{
 			"close":    CreateChannelCloseFunc(rval),
-			"length":   func() int { return rval.Len() },
-			"capacity": func() int { return rval.Cap() },
+			"length":   rval.Len,
+			"capacity": rval.Cap,
 		}
 
 		obj.SetPropertyStr("type", c.NewString("channel"))
@@ -976,10 +976,11 @@ func CreateChannelCloseFunc(rval reflect.Value) func() error {
 	return func() error {
 		// Only close if it's a send or bidirectional channel
 		if rval.Type().ChanDir() == reflect.RecvDir {
-			return fmt.Errorf("cannot close receive-only channel")
+			return ErrChanCloseReceiveOnly
 		}
 
 		rval.Close()
+
 		return nil
 	}
 }

@@ -750,21 +750,25 @@ func jsPrimitivesToGo[T any](
 ) (val any, ok bool, err error) {
 	if input.IsString() {
 		result, err := jsStringToGo(input, sample)
+
 		return result, true, err
 	}
 
 	if input.IsBigInt() {
 		result, err := JsBigIntToGo(input, sample)
+
 		return result, true, err
 	}
 
 	if input.IsNumber() {
 		result, err := JsNumberToGo(input, sample)
+
 		return result, true, err
 	}
 
 	if input.IsBool() {
 		val, err := processTempValue("JsBigIntToGo", input.Bool(), nil, true)
+
 		return val, true, err
 	}
 
@@ -782,6 +786,7 @@ func jsPrimitivesToGo[T any](
 
 	if input.IsFunction() {
 		result, err := jsFuncToGo(tracker, input, sample)
+
 		return result, true, err
 	}
 

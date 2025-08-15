@@ -32,6 +32,7 @@ var (
 	ErrChanClosed              = errors.New("channel is closed")
 	ErrChanSend                = errors.New("channel send would block: buffer full or no receiver ready")
 	ErrChanReceive             = errors.New("channel receive would block: buffer empty or no sender ready")
+	ErrChanCloseReceiveOnly    = errors.New("cannot close receive-only channel")
 )
 
 func combineErrors(errs ...error) error {
