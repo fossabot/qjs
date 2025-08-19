@@ -222,48 +222,42 @@ func TestContextErrorHandling(t *testing.T) {
 			{
 				name: "throw_error",
 				throwFunc: func() *qjs.Value {
-					ctx.ThrowError(errors.New("custom error"))
-					return nil
+					return ctx.ThrowError(errors.New("custom error"))
 				},
 				expectedErrMsg: "custom error",
 			},
 			{
 				name: "throw_syntax_error",
 				throwFunc: func() *qjs.Value {
-					ctx.ThrowSyntaxError("syntax %s", "error")
-					return nil
+					return ctx.ThrowSyntaxError("syntax %s", "error")
 				},
 				expectedErrMsg: "syntax error",
 			},
 			{
 				name: "throw_type_error",
 				throwFunc: func() *qjs.Value {
-					ctx.ThrowTypeError("type %s", "error")
-					return nil
+					return ctx.ThrowTypeError("type %s", "error")
 				},
 				expectedErrMsg: "type error",
 			},
 			{
 				name: "throw_reference_error",
 				throwFunc: func() *qjs.Value {
-					ctx.ThrowReferenceError("reference %s", "error")
-					return nil
+					return ctx.ThrowReferenceError("reference %s", "error")
 				},
 				expectedErrMsg: "reference error",
 			},
 			{
 				name: "throw_range_error",
 				throwFunc: func() *qjs.Value {
-					ctx.ThrowRangeError("range %s", "error")
-					return nil
+					return ctx.ThrowRangeError("range %s", "error")
 				},
 				expectedErrMsg: "range error",
 			},
 			{
 				name: "throw_internal_error",
 				throwFunc: func() *qjs.Value {
-					ctx.ThrowInternalError("internal %s", "error")
-					return nil
+					return ctx.ThrowInternalError("internal %s", "error")
 				},
 				expectedErrMsg: "internal error",
 			},
@@ -477,8 +471,7 @@ func createErrorHandlingTests() []functionTestCase {
 			name:              "throw_custom_error",
 			expectErrorString: "custom error",
 			fn: func(this *qjs.This) (*qjs.Value, error) {
-				this.Context().ThrowError(errors.New("custom error"))
-				return this.NewUndefined(), nil
+				return this.Context().ThrowError(errors.New("custom error")), nil
 			},
 		},
 	}
