@@ -288,64 +288,63 @@ func (c *Context) Exception() error {
 }
 
 // Throw throws a value as an exception.
-func (c *Context) Throw(v *Value) {
-	val := c.Call("JS_Throw", c.Raw(), v.Raw())
-	c.Call("JS_FreeValue", c.Raw(), val.Raw())
+func (c *Context) Throw(v *Value) *Value {
+	return c.Call("JS_Throw", c.Raw(), v.Raw())
 }
 
 // ThrowError throws an exception with the given error.
-func (c *Context) ThrowError(err error) {
-	c.Throw(c.NewError(err))
+func (c *Context) ThrowError(err error) *Value {
+	return c.Throw(c.NewError(err))
 }
 
 // ThrowSyntaxError throws syntax error with given cause.
-func (c *Context) ThrowSyntaxError(format string, args ...any) {
+func (c *Context) ThrowSyntaxError(format string, args ...any) *Value {
 	cause := fmt.Sprintf(format, args...)
 
 	causePtr := c.NewStringHandle(cause)
 	defer causePtr.Free()
 
-	c.Call("QJS_ThrowSyntaxError", c.Raw(), causePtr.Raw())
+	return c.Call("QJS_ThrowSyntaxError", c.Raw(), causePtr.Raw())
 }
 
 // ThrowTypeError throws type error with given cause.
-func (c *Context) ThrowTypeError(format string, args ...any) {
+func (c *Context) ThrowTypeError(format string, args ...any) *Value {
 	cause := fmt.Sprintf(format, args...)
 
 	causePtr := c.NewStringHandle(cause)
 	defer causePtr.Free()
 
-	c.Call("QJS_ThrowTypeError", c.Raw(), causePtr.Raw())
+	return c.Call("QJS_ThrowTypeError", c.Raw(), causePtr.Raw())
 }
 
 // ThrowReferenceError throws reference error with given cause.
-func (c *Context) ThrowReferenceError(format string, args ...any) {
+func (c *Context) ThrowReferenceError(format string, args ...any) *Value {
 	cause := fmt.Sprintf(format, args...)
 
 	causePtr := c.NewStringHandle(cause)
 	defer causePtr.Free()
 
-	c.Call("QJS_ThrowReferenceError", c.Raw(), causePtr.Raw())
+	return c.Call("QJS_ThrowReferenceError", c.Raw(), causePtr.Raw())
 }
 
 // ThrowRangeError throws range error with given cause.
-func (c *Context) ThrowRangeError(format string, args ...any) {
+func (c *Context) ThrowRangeError(format string, args ...any) *Value {
 	cause := fmt.Sprintf(format, args...)
 
 	causePtr := c.NewStringHandle(cause)
 	defer causePtr.Free()
 
-	c.Call("QJS_ThrowRangeError", c.Raw(), causePtr.Raw())
+	return c.Call("QJS_ThrowRangeError", c.Raw(), causePtr.Raw())
 }
 
 // ThrowInternalError throws internal error with given cause.
-func (c *Context) ThrowInternalError(format string, args ...any) {
+func (c *Context) ThrowInternalError(format string, args ...any) *Value {
 	cause := fmt.Sprintf(format, args...)
 
 	causePtr := c.NewStringHandle(cause)
 	defer causePtr.Free()
 
-	c.Call("QJS_ThrowInternalError", c.Raw(), causePtr.Raw())
+	return c.Call("QJS_ThrowInternalError", c.Raw(), causePtr.Raw())
 }
 
 // Function creates a JavaScript function that wraps the given Go function.

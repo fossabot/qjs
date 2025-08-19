@@ -134,9 +134,7 @@ func createFuncProxyWithRegistry(registry *ProxyRegistry) JsFunctionProxy {
 
 		result, err := goFunc(this)
 		if err != nil {
-			this.context.ThrowError(err)
-
-			return this.context.NewUndefined().Raw()
+			return this.context.ThrowError(err).Raw()
 		}
 
 		return validateAndReturnResult(this, result)
@@ -149,12 +147,11 @@ func handlePanicRecovery(this *This, r any) uint64 {
 	if this.isAsync && this.promise != nil {
 		errVal := this.context.NewError(recoveredErr)
 		rejectErr := this.promise.Reject(errVal)
-		this.context.ThrowError(combineErrors(recoveredErr, rejectErr))
-	} else {
-		this.context.ThrowError(recoveredErr)
+
+		return this.context.ThrowError(combineErrors(recoveredErr, rejectErr)).Raw()
 	}
 
-	return this.context.NewUndefined().Raw()
+	return this.context.ThrowError(recoveredErr).Raw()
 }
 
 // validateAndReturnResult validates the function result and handles JavaScript exceptions.

@@ -372,8 +372,7 @@ func TestProxyErrorHandling(t *testing.T) {
 			name: "function_throws_error",
 			setupFn: func(ctx *qjs.Context) {
 				ctx.SetFunc("throwingFunction", func(this *qjs.This) (*qjs.Value, error) {
-					this.Context().ThrowError(errors.New("thrown error"))
-					return this.NewUndefined(), nil
+					return this.Context().ThrowError(errors.New("thrown error")), nil
 				})
 			},
 			testCode:    "throwingFunction()",

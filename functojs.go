@@ -177,9 +177,8 @@ func GoFuncResultToJs(c *Context, results []reflect.Value) (*Value, error) {
 		// Last return is non-nil error -> throw in JS context
 		if !lastResult.IsNil() {
 			resultErr, _ := lastResult.Interface().(error)
-			c.ThrowError(resultErr)
 
-			return nil, nil
+			return nil, resultErr
 		}
 
 		// Error is nil, handle remaining return values
