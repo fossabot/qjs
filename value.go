@@ -122,6 +122,10 @@ func (v *Value) Type() string {
 		return "Symbol"
 	}
 
+	if v.IsQJSProxyValue() {
+		return "QJSProxyValue"
+	}
+
 	if v.IsNaN() {
 		return "NaN"
 	}
@@ -299,7 +303,20 @@ func (v *Value) DeleteProperty(name string) bool {
 }
 
 // Invoke call the object's method with the given name and arguments.
-func (v *Value) Invoke(fname string, args ...*Value) (*Value, error) {
+func (v *Value) Invoke(fname string, args ...any) (_ *Value, err error) {
+	jsArgs := make([]*Value, len(args))
+	for i, arg := range args {
+		if jsArgs[i], err = ToJSValue(v.context, arg); err != nil {
+			return nil, err
+		}
+		defer jsArgs[i].Free()
+	}
+
+	return v.InvokeJS(fname, jsArgs...)
+}
+
+// InvokeJS call the object's method with the given name and JS arguments.
+func (v *Value) InvokeJS(fname string, args ...*Value) (*Value, error) {
 	if !v.IsObject() {
 		return v.NewUndefined(), ErrCallFuncOnNonObject
 	}
@@ -416,6 +433,10 @@ func (v *Value) IsSymbol() bool {
 	return v.Call("QJS_IsSymbol", v.Raw()).handle.Bool()
 }
 
+func (v *Value) IsQJSProxyValue() bool {
+	return v.IsObject() && v.IsGlobalInstanceOf("QJS_PROXY_VALUE")
+}
+
 func (v *Value) IsObject() bool {
 	return v.Call("QJS_IsObject", v.Raw()).handle.Bool()
 }
@@ -446,7 +467,7 @@ func (v *Value) IsPromise() bool {
 // For native JS promises, use direct function calls or Promise.withResolvers instead.
 func (v *Value) Resolve(args ...*Value) error {
 	if v.IsPromise() {
-		result, err := v.Invoke("resolve", args...)
+		result, err := v.InvokeJS("resolve", args...)
 		if err != nil {
 			return err
 		}
@@ -463,7 +484,7 @@ func (v *Value) Resolve(args ...*Value) error {
 // For native JS promises, use direct function calls or Promise.withResolvers instead.
 func (v *Value) Reject(args ...*Value) error {
 	if v.IsPromise() {
-		result, err := v.Invoke("reject", args...)
+		result, err := v.InvokeJS("reject", args...)
 		if err != nil {
 			return err
 		}

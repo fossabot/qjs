@@ -614,6 +614,33 @@ JSValue QJS_Call(JSContext *ctx, JSValue func, JSValue this, int argc, uint64_t 
     return JS_Call(ctx, func, this, argc, js_argv);
 }
 
+// Create a new QJS_PROXY_VALUE instance directly in C for better performance
+JSValue QJS_NewProxyValue(JSContext *ctx, int64_t proxyId)
+{
+    // Get the QJS_PROXY_VALUE constructor from global object
+    JSValue global_obj = JS_GetGlobalObject(ctx);
+    JSValue ctor = JS_GetPropertyStr(ctx, global_obj, "QJS_PROXY_VALUE");
+    JS_FreeValue(ctx, global_obj);
+
+    if (JS_IsException(ctor) || JS_IsUndefined(ctor)) {
+        JS_FreeValue(ctx, ctor);
+        return JS_ThrowReferenceError(ctx, "QJS_PROXY_VALUE is not defined");
+    }
+
+    // Create argument for the constructor (proxyId)
+    JSValue arg = JS_NewInt64(ctx, proxyId);
+    JSValue args[1] = { arg };
+
+    // Call the constructor with 'new'
+    JSValue result = JS_CallConstructor(ctx, ctor, 1, args);
+
+    // Clean up
+    JS_FreeValue(ctx, ctor);
+    JS_FreeValue(ctx, arg);
+
+    return result;
+}
+
 void QJS_Panic() {
     // Handle panic situation
     fprintf(stderr, "QJS Panic: Unrecoverable error occurred\n");

@@ -136,6 +136,7 @@ JSValue QJS_GetPropertyUint32(JSContext *ctx, JSValue this_obj, uint32_t idx);
 int QJS_NewAtomUInt32(JSContext *ctx, uint64_t n);
 JSValue QJS_NewArrayBufferCopy(JSContext *ctx, uint64_t addr, uint64_t len);
 JSValue QJS_Call(JSContext *ctx, JSValue func, JSValue this, int argc, uint64_t argv);
+JSValue QJS_NewProxyValue(JSContext *ctx, int64_t proxyId);
 QJSRuntime *QJS_GetRuntime();
 
 bool Test_BoolTrue();

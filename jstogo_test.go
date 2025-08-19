@@ -2249,6 +2249,28 @@ func TestJsValueToGo(t *testing.T) {
 		expectEval   func(*testing.T, any, error)
 		customAssert func(*testing.T, any, error)
 	}{
+		// Direct qjs.Value
+		{
+			name:   "*qjs.Value",
+			jsCode: `42`,
+			sample: &qjs.Value{},
+			customAssert: func(t *testing.T, result any, err error) {
+				require.NoError(t, err)
+				assert.IsType(t, &qjs.Value{}, result)
+				assert.Equal(t, int64(42), result.(*qjs.Value).Int64())
+			},
+		},
+		{
+			name:   "qjs.Value",
+			jsCode: `42`,
+			sample: qjs.Value{},
+			customAssert: func(t *testing.T, result any, err error) {
+				require.NoError(t, err)
+				assert.IsType(t, qjs.Value{}, result)
+				value := result.(qjs.Value)
+				assert.Equal(t, int64(42), (&value).Int64())
+			},
+		},
 		// Basic primitive types
 		{
 			name:     "string_value",

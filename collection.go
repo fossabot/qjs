@@ -40,7 +40,7 @@ func (a *Array) Get(index int64) *Value {
 
 // Push appends elements to the array and returns the new length.
 func (a *Array) Push(elements ...*Value) int64 {
-	ret, err := a.Invoke("push", elements...)
+	ret, err := a.InvokeJS("push", elements...)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke push on Array: %w", err))
 	}
@@ -71,7 +71,7 @@ func (a *Array) Delete(index int64) bool {
 	countValue := a.context.NewInt64(1)
 	defer countValue.Free()
 
-	removeList, err := a.Invoke("splice", indexValue, countValue)
+	removeList, err := a.InvokeJS("splice", indexValue, countValue)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke splice on Array: %w", err))
 	}
@@ -125,7 +125,7 @@ func (m *Map) Get(key *Value) *Value {
 		return nil
 	}
 
-	v, err := m.Invoke("get", key)
+	v, err := m.InvokeJS("get", key)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke get on Map: %w", err))
 	}
@@ -139,7 +139,7 @@ func (m *Map) Set(key, value *Value) {
 		return
 	}
 
-	result, err := m.Invoke("set", key, value)
+	result, err := m.InvokeJS("set", key, value)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke set on Map: %w", err))
 	}
@@ -153,7 +153,7 @@ func (m *Map) Delete(key *Value) {
 		return
 	}
 
-	result, err := m.Invoke("delete", key)
+	result, err := m.InvokeJS("delete", key)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke delete on Map: %w", err))
 	}
@@ -167,7 +167,7 @@ func (m *Map) Has(key *Value) bool {
 		return false
 	}
 
-	boolValue, err := m.Invoke("has", key)
+	boolValue, err := m.InvokeJS("has", key)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke has on Map: %w", err))
 	}
@@ -193,7 +193,7 @@ func (m *Map) ForEach(forFn func(key, value *Value)) {
 	})
 	defer forEachFn.Free()
 
-	val, err := m.Invoke("forEach", forEachFn)
+	val, err := m.InvokeJS("forEach", forEachFn)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke forEach on Map: %w", err))
 	}
@@ -244,7 +244,7 @@ func (s *Set) Add(value *Value) {
 		return
 	}
 
-	v, err := s.Invoke("add", value)
+	v, err := s.InvokeJS("add", value)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke add on Set: %w", err))
 	}
@@ -258,7 +258,7 @@ func (s *Set) Delete(value *Value) {
 		return
 	}
 
-	v, err := s.Invoke("delete", value)
+	v, err := s.InvokeJS("delete", value)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke delete on Set: %w", err))
 	}
@@ -272,7 +272,7 @@ func (s *Set) Has(value *Value) bool {
 		return false
 	}
 
-	v, err := s.Invoke("has", value)
+	v, err := s.InvokeJS("has", value)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke has on Set: %w", err))
 	}
@@ -312,7 +312,7 @@ func (s *Set) ForEach(forFn func(value *Value)) {
 	})
 	defer forEachFn.Free()
 
-	value, err := s.Invoke("forEach", forEachFn)
+	value, err := s.InvokeJS("forEach", forEachFn)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke forEach on Set: %w", err))
 	}

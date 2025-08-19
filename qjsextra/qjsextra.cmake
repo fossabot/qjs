@@ -130,6 +130,7 @@ target_link_options(qjsextra PRIVATE
     "LINKER:--export=QJS_NewBigInt64"
     "LINKER:--export=QJS_NewBigUint64"
     "LINKER:--export=QJS_NewFloat64"
+    "LINKER:--export=QJS_NewProxyValue"
     "LINKER:--export=QJS_GetArrayBuffer"
     "LINKER:--export=QJS_JSONStringify"
     "LINKER:--export=QJS_ToInt32"

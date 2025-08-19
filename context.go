@@ -51,6 +51,13 @@ func (c *Context) MemWrite(addr uint32, b []byte) {
 	c.runtime.mem.MustWrite(addr, b)
 }
 
+// NewProxyValue creates a new Value that represents a proxy to a Go value.
+func (c *Context) NewProxyValue(v any) *Value {
+	proxyID := c.runtime.registry.Register(v)
+
+	return c.Call("QJS_NewProxyValue", c.Raw(), proxyID)
+}
+
 // NewStringHandle creates a Value from a string using runtime handle.
 func (c *Context) NewStringHandle(v string) *Value {
 	handle := c.runtime.NewStringHandle(v)
