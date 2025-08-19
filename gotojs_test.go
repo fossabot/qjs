@@ -769,6 +769,29 @@ func TestJSValueConversion(t *testing.T) {
 			})
 		})
 
+		t.Run("EmbeddedPointerStructNil", func(t *testing.T) {
+			s := EmbeddedPointerStructTest{
+				EmbeddedStruct: nil,
+				ExtraField:     "extra",
+			}
+			testValueConversion(t, ctx, s, func(result *qjs.Value) {
+				assert.True(t, result.IsObject(), "Struct should be object")
+				obj := result.Object()
+				defer obj.Free()
+
+				// Check embedded pointer fields are not accessible at top level
+				nameProp := obj.GetPropertyStr("Name")
+				defer nameProp.Free()
+				assert.True(t, nameProp.IsUndefined(), "Embedded pointer Name field should not be accessible")
+
+				// Check extra field
+				extraFieldProp := obj.GetPropertyStr("ExtraField")
+				defer extraFieldProp.Free()
+				assert.True(t, extraFieldProp.IsString(), "Extra field should be accessible")
+				assert.Equal(t, "extra", extraFieldProp.String())
+			})
+		})
+
 		t.Run("EmbeddedPointerStruct", func(t *testing.T) {
 			s := EmbeddedPointerStructTest{
 				EmbeddedStruct: &EmbeddedStruct{Name: "pointer_embedded", Age: 30},

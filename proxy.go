@@ -32,7 +32,6 @@ func (r *ProxyRegistry) Register(fn any) uint64 {
 	}
 
 	id := atomic.AddUint64(&r.nextID, 1)
-
 	r.mu.Lock()
 	r.proxies[id] = fn
 	r.mu.Unlock()

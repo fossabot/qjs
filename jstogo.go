@@ -83,7 +83,7 @@ func JsBigIntToGo[T any](input *Value, samples ...T) (v T, err error) {
 
 // JsTimeToGo converts a JS Date object into a time.Time value.
 func JsTimeToGo(input *Value) (time.Time, error) {
-	jsTime, err := input.Invoke("getTime")
+	jsTime, err := input.InvokeJS("getTime")
 	if err != nil {
 		return time.Time{}, newInvokeErr(input, err)
 	}
@@ -684,10 +684,28 @@ func jsValueToGo[T any](
 	samples ...T,
 ) (v T, err error) {
 	temp, sample := createTemp(samples...)
+	switch any(sample).(type) {
+	case *Value:
+		tvv, _ := any(input).(T)
+
+		return tvv, nil
+	case Value:
+		tv, _ := any(*input).(T)
+
+		return tv, nil
+	}
 
 	defer func() {
 		v, err = processTempValue("ToGoValue", temp, err, sample)
 	}()
+
+	// If JS value is a QJSProxyValue, extract the Go value from the registry
+	if input.IsQJSProxyValue() {
+		proxyID := input.GetPropertyStr("proxyId")
+		temp, _ = input.context.runtime.registry.Get(uint64(proxyID.Int64()))
+
+		return v, nil
+	}
 
 	var ok bool
 	if temp, ok, err = jsPrimitivesToGo(tracker, input, sample); ok {

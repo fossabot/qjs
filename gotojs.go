@@ -415,6 +415,10 @@ func (tracker *Tracker[T]) addEmbeddedPrimitive(
 	fieldName string,
 	fieldValue reflect.Value,
 ) error {
+	if !fieldValue.IsValid() {
+		return nil
+	}
+
 	prop, err := tracker.ToJSValue(c, fieldValue.Interface())
 	obj.SetPropertyStr(fieldName, prop)
 

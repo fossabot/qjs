@@ -25,6 +25,7 @@ QJS is a CGO-Free, modern, secure JavaScript runtime for Go applications, built 
 - **JavaScript ES6+ Support**: Full ECMAScript 2020 compatibility via QuickJS
 - **WebAssembly Execution**: Secure, sandboxed runtime using Wazero
 - **Go-JS Interoperability**: Seamless data conversion between Go and JavaScript
+- **ProxyValue Support**: Zero-copy sharing of Go values with JavaScript via lightweight proxies
 - **Function Binding**: Expose Go functions to JavaScript and vice versa
 - **Module System**: Support for ES6 modules and CommonJS
 - **Async/Await**: Full support for asynchronous JavaScript execution
@@ -303,6 +304,76 @@ fmt.Printf("Factorial(5): %d\n", result.GetPropertyStr("fact5").Int32())
 result.Free()
 ```
 
+### ProxyValue Support
+
+ProxyValue is a feature that allows you to pass Go values directly to JavaScript without full serialization, enabling efficient sharing of complex objects, functions, and resources.
+
+ProxyValue creates a lightweight JavaScript wrapper around Go values, storing only a reference ID rather than copying the entire value. This is particularly useful for **pass-through scenarios** where JavaScript receives a Go value and passes it back to Go without needing to access its contents.
+
+Key benefits:
+- **Zero-copy data sharing** - no serialization/deserialization overhead
+- **Pass-through efficiency** - JavaScript can hold and return Go values without conversion
+- **Type preservation** - original Go types are maintained across boundaries
+- **Resource efficiency** - perfect for objects like `context.Context`, database connections, or large structs
+
+**Most common use case**: JavaScript callbacks that receive Go values (like `context.Context`) and pass them back to Go functions without ever accessing the value contents in JavaScript.
+
+#### Basic ProxyValue Usage
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/fastschema/qjs"
+)
+
+func main() {
+	rt, err := qjs.New()
+	if err != nil {
+		panic(err)
+	}
+	defer rt.Close()
+	ctx := rt.Context()
+
+	// Create a Go function that accepts context and a number
+	goFuncWithContext := func(ctx context.Context, num int) int {
+		// Access context values in Go
+		fmt.Printf("Context received: %v\n", ctx)
+		return num * 2
+	}
+
+	// Convert Go function to JavaScript function
+	jsFuncWithContext, err := qjs.ToJSValue(ctx, goFuncWithContext)
+	if err != nil {
+		panic(err)
+	}
+	defer jsFuncWithContext.Free()
+	ctx.Global().SetPropertyStr("funcWithContext", jsFuncWithContext)
+
+	// Create a helper function that returns a ProxyValue
+	ctx.SetFunc("$context", func(this *qjs.This) (*qjs.Value, error) {
+		// Create context as ProxyValue - JavaScript will never access its contents
+		val := ctx.NewProxyValue(context.Background())
+		return val, nil
+	})
+
+	// JavaScript gets context as ProxyValue and passes it to Go function
+	result, err := ctx.Eval("test.js", qjs.Code(`
+		funcWithContext($context(), 10);
+	`))
+	if err != nil {
+		panic(err)
+	}
+	defer result.Free()
+
+	// Output: 20
+	fmt.Println(result.Int32())
+}
+```
+
 ### GO-JS Conversion
 
 ```go
@@ -483,6 +554,7 @@ import "github.com/fastschema/qjs"
 | `Context` | JavaScript execution context |
 | `Value` | JavaScript value wrapper |
 | `Pool` | Runtime pool for performance |
+| `ProxyRegistry` | Thread-safe registry for ProxyValue objects |
 
 ### Key Methods
 
@@ -502,6 +574,7 @@ ctx.SetFunc(name, fn)                    // Bind Go function
 ctx.SetAsyncFunc(name, fn)               // Bind async function
 ctx.NewString(s)                         // Create JS string
 ctx.NewObject()                          // Create JS object
+ctx.NewProxyValue(v)                     // Create ProxyValue from Go value
 ...
 
 // Value Operations
@@ -510,7 +583,13 @@ value.Int32()                            // Convert to Go int32
 value.Bool()                             // Convert to Go bool
 value.GetPropertyStr(name)               // Get object property
 value.SetPropertyStr(name, val)          // Set object property
+value.IsQJSProxyValue()                  // Check if value is a ProxyValue
 value.Free()                             // Release memory
+...
+
+// ProxyValue Operations
+qjs.JsValueToGo[T](value)               // Extract Go value from ProxyValue
+qjs.ToJSValue(ctx, goValue)             // Convert Go value to JS (auto-detects ProxyValue need)
 ...
 ```
 
@@ -531,8 +610,9 @@ type Option struct {
 **Optimization Tips:**
 1. Use runtime pools for concurrent applications
 2. Compile frequently-used scripts to bytecode
-3. Minimize large object conversions between Go and JS
-4. Set appropriate memory limits
+3. Use ProxyValue for large objects or shared state to avoid serialization overhead
+4. Minimize small object conversions between Go and JS - prefer ProxyValue for complex types
+5. Set appropriate memory limits
 
 **Security**
 
@@ -540,7 +620,8 @@ type Option struct {
 - **No network access** from JavaScript (unless explicitly allowed)
 - **Memory safe** - no buffer overflows  
 - **No CGO attack surface**  
-- **Deterministic resource cleanup**  
+- **Deterministic resource cleanup**
+- **ProxyValue safety** - Go values are protected by type checking and automatic cleanup
 
 ### Memory Management
 

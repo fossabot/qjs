@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"testing"
+	"unsafe"
 
 	"github.com/fastschema/qjs"
 	"github.com/stretchr/testify/assert"
@@ -570,11 +571,37 @@ func TestValuePropertyOperations(t *testing.T) {
 	})
 }
 
-func TestValueCallOperations(t *testing.T) {
+func TestValueInvokeOperations(t *testing.T) {
 	rt, ctx := setupTestContext(t)
 	defer rt.Close()
 
-	t.Run("Call", func(t *testing.T) {
+	t.Run("Invoke", func(t *testing.T) {
+		obj := must(ctx.Eval("test.js", qjs.Code(`({
+				add: function(a, b) { return a + b; }
+		})`)))
+		defer obj.Free()
+
+		result, err := obj.Invoke("add", 5, 3)
+		defer result.Free()
+
+		assert.NoError(t, err)
+		assert.Equal(t, int32(8), result.Int32())
+	})
+
+	t.Run("InvokeError", func(t *testing.T) {
+		obj := must(ctx.Eval("test.js", qjs.Code(`({
+				add: function(a, b) { return a + b; }
+		})`)))
+		defer obj.Free()
+
+		var a any = 5
+		var b any = unsafe.Pointer(&[]byte{1, 2, 3}[0])
+
+		_, err := obj.Invoke("add", a, b)
+		assert.Error(t, err)
+	})
+
+	t.Run("InvokeJS", func(t *testing.T) {
 		obj := must(ctx.Eval("test.js", qjs.Code(`({
 				add: function(a, b) { return a + b; }
 		})`)))
@@ -586,25 +613,25 @@ func TestValueCallOperations(t *testing.T) {
 		b := ctx.NewInt32(3)
 		defer b.Free()
 
-		result, err := obj.Invoke("add", a, b)
+		result, err := obj.InvokeJS("add", a, b)
 		defer result.Free()
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(8), result.Int32())
 	})
 
-	t.Run("CallError", func(t *testing.T) {
+	t.Run("InvokeJSError", func(t *testing.T) {
 		num := ctx.NewInt32(42)
 		defer num.Free()
 
-		_, err := num.Invoke("toString")
+		_, err := num.InvokeJS("toString")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot call function on non-object")
 
 		obj := ctx.NewObject()
 		defer obj.Free()
 
-		_, err = obj.Invoke("nonExistent")
+		_, err = obj.InvokeJS("nonExistent")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "not a function")
 	})
@@ -711,6 +738,7 @@ func TestValueType(t *testing.T) {
 
 		{"IsUninitialized", "", ctx.NewUninitialized(), "Uninitialized", nil},
 		{"Error", "", ctx.NewError(errors.New("some error")), "Error", nil},
+		{"ProxyValue", "", ctx.NewProxyValue(42), "QJSProxyValue", nil},
 
 		{"unknown", "({})", nil, "unknown", nil},
 	}

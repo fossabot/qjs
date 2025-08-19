@@ -1,7 +1,9 @@
 package qjs_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,6 +37,28 @@ func TestContextBasicProperties(t *testing.T) {
 // Value Creation Tests
 func TestContextValueCreation(t *testing.T) {
 	_, ctx := setupRuntime(t)
+
+	t.Run("proxy_values", func(t *testing.T) {
+		goFuncWithContext := func(ctx context.Context, num int) int {
+			fmt.Printf("context check: is nil=%t, value=%v\n", ctx == nil, ctx)
+			return num * 2
+		}
+		jsFuncWithContext := must(qjs.ToJSValue(ctx, goFuncWithContext))
+		defer jsFuncWithContext.Free()
+		ctx.Global().SetPropertyStr("funcWithContext", jsFuncWithContext)
+
+		ctx.SetFunc("$context", func(this *qjs.This) (*qjs.Value, error) {
+			val := ctx.NewProxyValue(context.Background())
+			return val, nil
+		})
+
+		result, err := ctx.Eval("test.js", qjs.Code(`
+			funcWithContext($context(), 10);
+		`))
+		assert.NoError(t, err)
+		defer result.Free()
+		assert.Equal(t, int32(20), result.Int32())
+	})
 
 	t.Run("primitive_values", func(t *testing.T) {
 		testCases := []struct {
