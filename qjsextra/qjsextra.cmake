@@ -1,3 +1,5 @@
+
+
 macro(add_qjs_libc_if_needed target)
     if(NOT QJS_BUILD_LIBC)
         target_sources(${target} PRIVATE quickjs-libc.c)
@@ -28,11 +30,11 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
 endif()
 
 add_executable(qjsextra
-    gen/repl.c
-    gen/standalone.c
+    # gen/repl.c
+    # gen/standalone.c
     ../eval.c
-    ../helpers.c
     ../function.c
+    ../helpers.c
     ../qjs.c
 )
 
@@ -166,3 +168,12 @@ if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
         target_link_libraries(qjsextra mimalloc)
     endif()
 endif()
+
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)  # enables -flto for clang/wasm-ld
+
+add_compile_options(-O3 -DNDEBUG)
+add_link_options(-O3)
+
+add_link_options("LINKER:--stack-first")
+add_link_options("LINKER:--initial-memory=1310720") # 20 pages

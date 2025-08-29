@@ -118,15 +118,11 @@ QJSRuntime *New_QJS(
   if (memory_limit > 0)
     JS_SetMemoryLimit(runtime, memory_limit);
 
-  JS_SetMemoryLimit(runtime, 1024 * 1024 * 100);
-
   if (gc_threshold > 0)
     JS_SetGCThreshold(runtime, gc_threshold);
 
   if (max_stack_size > 0)
     JS_SetMaxStackSize(runtime, max_stack_size);
-
-  JS_SetMaxStackSize(runtime, 1024 * 1024 * 100);
 
   /* setup the the worker context */
   js_std_set_worker_new_context_func(New_QJSContext);
@@ -200,8 +196,10 @@ QJSRuntime *QJS_GetRuntime()
 
 void initialize()
 {
-  size_t memory_limit = 1024 * 1024 * 100;  // 100 MB
-  size_t gc_threshold = 1024 * 1024 * 10;   // 10 MB
-  size_t max_stack_size = 1024 * 1024 * 10; // 10 MB
+  if (qjs != NULL)
+    return;
+  size_t memory_limit = 0;
+  size_t gc_threshold = 0;
+  size_t max_stack_size = 0;
   qjs = New_QJS(memory_limit, max_stack_size, 0, gc_threshold);
 }
