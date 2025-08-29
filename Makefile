@@ -14,6 +14,8 @@ build:
 		@echo "Copying build/qjsextra to top-level as qjsextra.wasm..."
 		cp qjsextra/quickjs/build/qjsextra qjsextra.wasm
 
+		wasm-opt -O3 qjsextra.wasm -o qjsextra.wasm
+
 clean:
 	@echo "Cleaning build directory..."
 	cd quickjs && rm -rf build

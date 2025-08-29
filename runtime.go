@@ -38,6 +38,8 @@ type Runtime struct {
 
 func createGlobalCompiledModule(
 	ctx context.Context,
+	closeOnContextDone bool,
+	disableBuildCache bool,
 	quickjsWasmBytes ...[]byte,
 ) (err error) {
 	// Protect global compilation state with mutex
@@ -55,12 +57,12 @@ func createGlobalCompiledModule(
 	currentHash := hashBytes(qjsBytes)
 
 	// Check if we need to compile or recompile
-	if compiledQJSModule == nil || cachedBytesHash != currentHash {
+	if compiledQJSModule == nil || cachedBytesHash != currentHash || disableBuildCache {
 		cache := wazero.NewCompilationCache()
 		cachedRuntimeConfig = wazero.
 			NewRuntimeConfig().
 			WithCompilationCache(cache).
-			WithCloseOnContextDone(true)
+			WithCloseOnContextDone(closeOnContextDone)
 		wrt := wazero.NewRuntimeWithConfig(ctx, cachedRuntimeConfig)
 
 		if compiledQJSModule, err = wrt.CompileModule(ctx, qjsBytes); err != nil {
@@ -95,6 +97,8 @@ func New(options ...*Option) (runtime *Runtime, err error) {
 
 	if err := createGlobalCompiledModule(
 		option.Context,
+		option.CloseOnContextDone,
+		option.DisableBuildCache,
 		option.QuickJSWasmBytes,
 	); err != nil {
 		return nil, fmt.Errorf("failed to create global compiled module: %w", err)

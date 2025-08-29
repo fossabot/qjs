@@ -34,14 +34,18 @@ type Option struct {
 	CWD               string
 	StartFunctionName string
 	Context           context.Context
-	MemoryLimit       int
-	MaxStackSize      int
-	MaxExecutionTime  int
-	GCThreshold       int
-	QuickJSWasmBytes  []byte
-	ProxyFunction     any
-	Stdout            io.Writer
-	Stderr            io.Writer
+	// Enabling this option significantly increases evaluation time
+	// because every operation must check the done context, which introduces additional overhead.
+	CloseOnContextDone bool
+	DisableBuildCache  bool
+	MemoryLimit        int
+	MaxStackSize       int
+	MaxExecutionTime   int
+	GCThreshold        int
+	QuickJSWasmBytes   []byte
+	ProxyFunction      any
+	Stdout             io.Writer
+	Stderr             io.Writer
 }
 
 // EvalOption configures JavaScript evaluation behavior in QuickJS context.

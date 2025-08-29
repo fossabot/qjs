@@ -142,7 +142,11 @@ func TestRuntime(t *testing.T) {
 	t.Run("RuntimeCreationWithCanceledContext", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err := qjs.New(&qjs.Option{Context: ctx})
+		_, err := qjs.New(&qjs.Option{
+			Context:            ctx,
+			CloseOnContextDone: true,
+			DisableBuildCache:  true,
+		})
 		assert.Error(t, err, "Creating runtime with canceled context should return error")
 	})
 
@@ -200,7 +204,11 @@ func TestRuntime(t *testing.T) {
 
 	t.Run("MallocError", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		rt := must(qjs.New(&qjs.Option{Context: ctx}))
+		rt := must(qjs.New(&qjs.Option{
+			Context:            ctx,
+			CloseOnContextDone: true,
+			DisableBuildCache:  true,
+		}))
 		cancel() // Cancel context to simulate error
 		assert.Panics(t, func() {
 			rt.Malloc(1024)
