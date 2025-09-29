@@ -210,7 +210,7 @@ func jsObjectOrMapToGoMap[T any](
 	temp, obj, sample, targetType := createGoObjectTarget(input, samples...)
 
 	defer func() {
-		v, err = processTempValue("JsObjectOrMapToGo", temp, err, sample)
+		v, err = processTempValue("JsObjectOrMapToGoMap", temp, err, sample)
 	}()
 
 	var ct CircularTracker[uint64]
@@ -270,7 +270,7 @@ func jsObjectOrMapToGoStruct[T any](
 	temp, obj, sample, targetType := createGoObjectTarget(input, samples...)
 
 	defer func() {
-		v, err = processTempValue("JsObjectOrMapToGo", temp, err, sample)
+		v, err = processTempValue("JsObjectOrMapToGoStruct", temp, err, sample)
 	}()
 
 	var ct CircularTracker[uint64]

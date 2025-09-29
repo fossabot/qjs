@@ -1,6 +1,6 @@
-#include "../quickjs/quickjs.h"
-#include "../quickjs/quickjs-libc.h"
-#include "../quickjs/cutils.h"
+#include "./quickjs/quickjs.h"
+#include "./quickjs/quickjs-libc.h"
+#include "./quickjs/cutils.h"
 #include <time.h>
 
 JSValue JS_NewNull();
@@ -117,7 +117,7 @@ bool QJS_IsArray(JSValue v);
 bool QJS_IsConstructor(JSContext *ctx, JSValue v);
 bool QJS_IsInstanceOf(JSContext *ctx, JSValue v, JSValue obj);
 JSValue QJS_NewString(JSContext *ctx, const char *str);
-JSValue QJS_CreateProxyFunction(JSContext *ctx, uint64_t handle_id, uint64_t ctx_id, uint64_t is_async);
+JSValue QJS_CreateFunctionProxy(JSContext *ctx, uint64_t handle_id, uint64_t ctx_id, uint64_t is_async);
 JSValue QJS_NewInt64(JSContext *ctx, int64_t val);
 JSValue QJS_NewUint32(JSContext *ctx, uint32_t val);
 JSValue QJS_NewInt32(JSContext *ctx, int32_t val);

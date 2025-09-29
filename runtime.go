@@ -87,10 +87,7 @@ func New(options ...*Option) (runtime *Runtime, err error) {
 
 	proxyRegistry := NewProxyRegistry()
 
-	option, err := getRuntimeOption(
-		proxyRegistry,
-		options...,
-	)
+	option, err := getRuntimeOption(proxyRegistry, options...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtime options: %w", err)
 	}

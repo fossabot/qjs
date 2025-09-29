@@ -42,6 +42,8 @@ func (tracker *Tracker[T]) StructToJSObjectValue(
 	rval reflect.Value,
 ) (*Value, error) {
 	return withJSObject(c, func(obj *Value) error {
+		// obj.SetPropertyStr("__go_type", c.NewString(GetGoTypeName(rtype)))
+
 		// Determine the struct type and value for field processing:
 		// - pointer to struct: dereference for field processing.
 		// - direct struct: use as-is.
@@ -50,7 +52,7 @@ func (tracker *Tracker[T]) StructToJSObjectValue(
 			structVal  reflect.Value
 		)
 
-		if rtype.Kind() == reflect.Ptr {
+		if rtype.Kind() == reflect.Pointer {
 			structType = rtype.Elem()
 			structVal = rval.Elem()
 		} else {
@@ -360,8 +362,9 @@ func (tracker *Tracker[T]) processEmbeddedFields(
 ) error {
 	for i := range rtype.NumField() {
 		field := rtype.Field(i)
+		jsonIgnore := field.Tag.Get("json") == "-"
 
-		if !field.IsExported() || !field.Anonymous {
+		if !field.IsExported() || !field.Anonymous || jsonIgnore {
 			continue
 		}
 
@@ -434,6 +437,7 @@ func (tracker *Tracker[T]) processRegularFields(
 ) error {
 	for i := range rtype.NumField() {
 		field := rtype.Field(i)
+
 		if !field.IsExported() || field.Anonymous {
 			continue
 		}

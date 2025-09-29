@@ -1,4 +1,5 @@
 #include "qjs.h"
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -45,10 +46,14 @@ static uint8_t *detect_buf(JSContext *ctx, QJSEvalOptions *opts, size_t *buf_len
 /* Returns a thrown exception for an empty buffer.
  * If buf is non-NULL, this function returns JS_NULL.
  */
-static JSValue buf_empty_error(JSContext *ctx, uint8_t *buf, bool is_file, QJSEvalOptions *opts)
+static JSValue buf_empty_error(JSContext *ctx, bool is_file, QJSEvalOptions *opts)
 {
-    if (buf != NULL)
-        return JS_NULL; // No error.
+    if (JS_HasException(ctx))
+        return JS_Throw(ctx, JS_GetException(ctx));
+
+    if (errno != 0)
+        return JS_ThrowReferenceError(ctx, "%s: %s", strerror(errno), opts->filename);
+
     if (is_file)
     {
         if (!opts->filename || opts->filename[0] == '\0')
@@ -56,6 +61,7 @@ static JSValue buf_empty_error(JSContext *ctx, uint8_t *buf, bool is_file, QJSEv
         else
             return JS_ThrowReferenceError(ctx, "could not load file: %s", opts->filename);
     }
+
     return JS_ThrowReferenceError(ctx, "in-memory buffer/bytecode is required for evaluation");
 }
 
@@ -65,20 +71,49 @@ static JSValue load_buf(JSContext *ctx, QJSEvalOptions opts, int flags, bool eva
     size_t buf_len = 0;
     uint8_t *buf = detect_buf(ctx, &opts, &buf_len, is_file);
     if (buf == NULL)
-        return buf_empty_error(ctx, buf, is_file, &opts);
+        return buf_empty_error(ctx, is_file, &opts);
 
     JSValue module_val;
     if (opts.bytecode_buf != NULL)
         if (!eval)
+        {
             module_val = JS_ReadObject(ctx, opts.bytecode_buf, opts.bytecode_len, JS_READ_OBJ_BYTECODE);
+            if (JS_IsException(module_val))
+            {
+                if (is_file)
+                    js_free(ctx, buf);
+                return JS_Throw(ctx, JS_GetException(ctx));
+            }
+        }
         else
         {
             JSValue obj = JS_ReadObject(ctx, opts.bytecode_buf, opts.bytecode_len, JS_READ_OBJ_BYTECODE);
+            if (JS_IsException(obj))
+            {
+                if (is_file)
+                    js_free(ctx, buf);
+                return JS_Throw(ctx, JS_GetException(ctx));
+            }
             module_val = JS_EvalFunction(ctx, obj);
+            if (JS_IsException(module_val))
+            {
+                JS_FreeValue(ctx, obj);
+                if (is_file)
+                    js_free(ctx, buf);
+                return JS_Throw(ctx, JS_GetException(ctx));
+            }
         }
 
     else
+    {
         module_val = JS_Eval(ctx, (const char *)buf, buf_len, opts.filename, flags);
+        if (JS_IsException(module_val))
+        {
+            if (is_file)
+                js_free(ctx, buf);
+            return JS_Throw(ctx, JS_GetException(ctx));
+        }
+    }
 
     if (is_file)
         js_free(ctx, buf);
@@ -131,6 +166,13 @@ static JSModuleDef *js_module_loader_json(JSContext *ctx, const char *module_nam
     /* Create the module source */
     size_t source_len = strlen(module_source_template) + strlen(json_string) + 1;
     char *module_source = malloc(source_len);
+    if (!module_source)
+    {
+        JS_FreeCString(ctx, json_string);
+        JS_FreeValue(ctx, json_str);
+        JS_FreeValue(ctx, json_val);
+        return NULL;
+    }
     snprintf(module_source, source_len, module_source_template, json_string);
 
     /* Compile the module */
@@ -222,6 +264,9 @@ static JSValue qjs_eval_module(JSContext *ctx, QJSEvalOptions opts)
         result = js_std_await(ctx, result);
 
     js_std_loop(ctx);
+    if (JS_IsException(result))
+        return JS_Throw(ctx, JS_GetException(ctx));
+
     JSModuleDef *module_def = JS_VALUE_GET_PTR(module_val);
     JSValue ns = JS_GetModuleNamespace(ctx, module_def);
     JSAtom default_atom = JS_NewAtom(ctx, "default");
@@ -355,7 +400,7 @@ QJSEvalOptions *QJS_CreateEvalOption(void *buf, uint8_t *bytecode_buf, size_t by
     QJSEvalOptions *opts = (QJSEvalOptions *)malloc(sizeof(QJSEvalOptions));
     if (opts == NULL)
     {
-        printf("Error allocating memory for QJSEvalOptions\n");
+        // Memory allocation failed - return NULL so caller can handle the error
         return NULL;
     }
 

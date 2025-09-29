@@ -1,6 +1,7 @@
 package qjs
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 )
@@ -125,13 +126,69 @@ func handlePointerArgument(jsArg *Value, argType reflect.Type) (reflect.Value, e
 	return ptrVal, nil
 }
 
+// CreateNonNilSample creates appropriate non-nil samples for types that have nil zero values.
+func CreateNonNilSample(argType reflect.Type) any {
+	switch argType.Kind() {
+	case reflect.Interface:
+		// Special handling for context.Context
+		if argType.Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
+			return context.Background()
+		}
+
+		// For other interfaces, return nil to let the conversion
+		// use the default logic which can handle dynamic type inference
+		return nil
+
+	case reflect.Ptr:
+		elemType := argType.Elem()
+		elemZero := reflect.Zero(elemType)
+		ptr := reflect.New(elemType)
+		ptr.Elem().Set(elemZero)
+
+		return ptr.Interface()
+
+	case reflect.Array:
+		return reflect.New(argType).Elem().Interface()
+
+	case reflect.Slice:
+		return reflect.MakeSlice(argType, 0, 0).Interface()
+
+	case reflect.Map:
+		return reflect.MakeMap(argType).Interface()
+
+	case reflect.Chan:
+		return reflect.MakeChan(argType, 1).Interface() // size 1 buffer to avoid blocking
+
+	case reflect.Func:
+		return createDummyFunction(argType)
+
+	default:
+		// For other types (shouldn't happen), return zero value
+		return reflect.Zero(argType).Interface()
+	}
+}
+
+// createDummyFunction creates a dummy function with the specified signature for type inference.
+func createDummyFunction(funcType reflect.Type) any {
+	fn := reflect.MakeFunc(funcType, func(_ []reflect.Value) []reflect.Value {
+		results := make([]reflect.Value, funcType.NumOut())
+		for i := range funcType.NumOut() {
+			results[i] = reflect.Zero(funcType.Out(i))
+		}
+
+		return results
+	})
+
+	return fn.Interface()
+}
+
 // JsArgToGo converts a single JS argument to a Go value with enhanced type handling.
 func JsArgToGo(jsArg *Value, argType reflect.Type) (reflect.Value, error) {
 	if argType.Kind() == reflect.Ptr {
 		return handlePointerArgument(jsArg, argType)
 	}
 
-	goZeroVal := reflect.Zero(argType).Interface()
+	goZeroVal := CreateNonNilSample(argType)
 
 	goVal, err := JsValueToGo(jsArg, goZeroVal)
 	if err != nil {

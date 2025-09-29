@@ -22,7 +22,7 @@ JSValue InvokeFunctionProxy(JSContext *ctx, JSValueConst this_val, int argc, JSV
 #endif
 }
 
-JSValue QJS_CreateProxyFunction(JSContext *ctx, uint64_t func_id, uint64_t ctx_id, uint64_t is_async)
+JSValue QJS_CreateFunctionProxy(JSContext *ctx, uint64_t func_id, uint64_t ctx_id, uint64_t is_async)
 {
   // Create the C function binding that will be our proxy handler
   JSValue proxy = JS_NewCFunction(
@@ -47,14 +47,14 @@ JSValue QJS_CreateProxyFunction(JSContext *ctx, uint64_t func_id, uint64_t ctx_i
 
   if (is_async == 0)
   {
-    proxy_content = "(proxy, fnHandler, ctx, is_async) => function(...args) { "
+    proxy_content = "(proxy, fnHandler, ctx, is_async) => function QJS_FunctionProxy (...args) { "
                     "  if (typeof proxy !== 'function') throw new TypeError('proxy is not a function'); "
                     "  return proxy.call(this, fnHandler, ctx, is_async, undefined, ...args); "
                     "}";
   }
   else
   {
-    proxy_content = "(proxy, fnHandler, ctx, is_async) => async function(...args) {"
+    proxy_content = "(proxy, fnHandler, ctx, is_async) => async function QJS_AsyncFunctionProxy (...args) {"
                     "	if (typeof proxy !== 'function') throw new TypeError('proxy is not a function'); "
                     "	let resolve, reject;"
                     "	const promise = new Promise((resolve_, reject_) => {"

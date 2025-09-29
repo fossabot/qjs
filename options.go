@@ -22,9 +22,9 @@ const (
 	JsEvalFlagStrict = (1 << 3)
 	// JsEvalFlagUnUsed is reserved for future use.
 	JsEvalFlagUnUsed = (1 << 4)
-	// Compile-only; returns a JS bytecode/module for JS_EvalFunction()..
+	// JsEvalFlagCompileOnly returns a JS bytecode/module for JS_EvalFunction().
 	JsEvalFlagCompileOnly = (1 << 5)
-	// Don't include the stack frames before this eval in the Error() backtraces.
+	// JsEvalFlagBackTraceBarrier prevents the stack frames before this eval in the Error() backtraces.
 	JsEvalFlagBackTraceBarrier = (1 << 6)
 	// JsEvalFlagAsync enables top-level await (global scope only).
 	JsEvalFlagAsync = (1 << 7)

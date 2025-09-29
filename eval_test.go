@@ -325,7 +325,7 @@ func TestModuleLoading(t *testing.T) {
 				options: []qjs.EvalOptionFunc{qjs.TypeModule()},
 				expectErr: func(t *testing.T, err error) {
 					assert.Error(t, err)
-					assert.Contains(t, err.Error(), "could not load file")
+					assert.Contains(t, err.Error(), "No such file or directory: testdata/00_loader/not_found.js")
 				},
 			},
 			{

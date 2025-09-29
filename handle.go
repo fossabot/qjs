@@ -142,7 +142,6 @@ func ConvertToUnsigned[T Unsigned](h *Handle) T {
 	return result
 }
 
-// Integer conversion methods using the generic functions.
 func (h *Handle) Int() int         { return ConvertToSigned[int](h) }
 func (h *Handle) Int8() int8       { return ConvertToSigned[int8](h) }
 func (h *Handle) Int16() int16     { return ConvertToSigned[int16](h) }

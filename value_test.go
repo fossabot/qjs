@@ -3,6 +3,7 @@ package qjs_test
 import (
 	"errors"
 	"math/big"
+	"slices"
 	"testing"
 	"unsafe"
 
@@ -732,7 +733,7 @@ func TestValueType(t *testing.T) {
 		{"Array", "[]", nil, "Array", nil},
 		{"Map", "new Map()", nil, "Map", nil},
 		{"Set", "new Set()", nil, "Set", nil},
-		{"Constructor", "Array", nil, "Constructor", []string{"Function"}},
+		{"Constructor", "Array", nil, "Constructor", []string{"Constructor Array"}},
 		{"Function", "(() => 42)", nil, "Function", []string{"Constructor"}},
 		{"ArrayBuffer", "new ArrayBuffer(8)", nil, "ArrayBuffer", nil},
 
@@ -756,13 +757,7 @@ func TestValueType(t *testing.T) {
 
 			actualType := val.Type()
 			validTypes := append([]string{tc.expectedType}, tc.allowedTypes...)
-			matched := false
-			for _, validType := range validTypes {
-				if actualType == validType {
-					matched = true
-					break
-				}
-			}
+			matched := slices.Contains(validTypes, actualType)
 
 			assert.True(t, matched,
 				"Code '%s' expected type in %v but got '%s'",

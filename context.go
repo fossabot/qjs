@@ -356,7 +356,7 @@ func (c *Context) Function(fn Function, isAsyncs ...bool) *Value {
 
 	fnID := c.runtime.registry.Register(fn)
 	ctxID := c.runtime.registry.Register(c)
-	proxyFuncVal := c.Call("QJS_CreateProxyFunction", c.Raw(), fnID, ctxID, isAsync)
+	proxyFuncVal := c.Call("QJS_CreateFunctionProxy", c.Raw(), fnID, ctxID, isAsync)
 
 	// Registry: Store IDs for cleanup and callback identification
 	proxyFuncVal.SetPropertyStr("__fnID", c.NewInt64(int64(fnID)))

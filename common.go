@@ -13,19 +13,19 @@ import (
 )
 
 const (
-	// The minimum number of arguments for Map forEach callback (value, key).
+	// MinMapForeachArgs is the minimum number of arguments for Map forEach callback (value, key).
 	MinMapForeachArgs = 2
-	// The conversion factor from nanoseconds to milliseconds.
+	// NanosToMillis is the conversion factor from nanoseconds to milliseconds.
 	NanosToMillis = 1e6
-	// The size of a uint64 value in bytes.
+	// Uint64ByteSize is the size of a uint64 value in bytes.
 	Uint64ByteSize = 8
-	// The bit position of the sign bit in a 64-bit unsigned integer.
+	// Uint64SignBitPosition is the bit position of the sign bit in a 64-bit unsigned integer.
 	Uint64SignBitPosition = 63
-	// The size in bytes of a packed pointer structure.
+	// PackedPtrSize is the size in bytes of a packed pointer structure.
 	PackedPtrSize = 8
 	// NullPtr represents a null pointer value.
 	NullPtr = uint32(0)
-	// The null terminator byte for C-style strings.
+	// StringTerminator is the null terminator byte for C-style strings.
 	StringTerminator = byte(0)
 )
 
@@ -870,7 +870,7 @@ func ParseTimezone(tz string) *time.Location {
 	return time.UTC
 }
 
-// Check if the platform is 32-bit by comparing the size of uintptr.
+// Is32BitPlatform check if the platform is 32-bit by comparing the size of uintptr.
 func Is32BitPlatform() bool {
 	return strconv.IntSize == 32
 }

@@ -33,8 +33,10 @@ type JSPropertyEnum struct {
 	atom         JSAtom
 }
 
-// Object property names and some strings are stored as Atoms (unique strings)
-// to save memory and allow fast comparison.
+const jsPropertyEnumSize = uint32(unsafe.Sizeof(JSPropertyEnum{}))
+
+// Atom represents a JavaScript atom:
+// Object property names and some strings are stored as Atoms (unique strings) to save memory and allow fast comparison.
 type Atom struct {
 	*Value
 
@@ -189,7 +191,15 @@ func (v *Value) Type() string {
 
 	// Check Constructor before Function.
 	if v.IsConstructor() {
-		return "Constructor"
+		name := v.GetPropertyStr("name")
+		defer name.Free()
+
+		constructorName := ""
+		if name.IsString() && name.String() != "" {
+			constructorName = " " + name.String()
+		}
+
+		return "Constructor" + constructorName
 	}
 
 	if v.IsFunction() {
@@ -221,17 +231,26 @@ func (v *Value) GetOwnPropertyNames() (_ []string, err error) {
 }
 
 func (v *Value) GetOwnProperties() []OwnProperty {
-	ptr, size := v.context.CallUnPack("QJS_GetOwnPropertyNames", v.Ctx(), v.Raw())
-	if size == 0 {
+	ptr, entriesCount := v.context.CallUnPack(
+		"QJS_GetOwnPropertyNames",
+		v.Ctx(),
+		v.Raw(),
+	)
+	if entriesCount == 0 {
 		return []OwnProperty{}
 	}
 
 	// Block size: number of entries * sizeof(JSPropertyEnum)
-	blockSize := size * uint32(unsafe.Sizeof(JSPropertyEnum{}))
+	blockSize := entriesCount * jsPropertyEnumSize
 	bytes := v.context.MemRead(ptr, uint64(blockSize))
 
-	// Convert the memory block into a slice of JSPropertyEnum.
-	entries := unsafe.Slice((*JSPropertyEnum)(unsafe.Pointer(&bytes[0])), size)
+	// SAFETY: This converts C memory layout to Go structs.
+	// The memory comes from QJS C code and matches JSPropertyEnum layout.
+	// This is safe because:
+	// 1. Memory size is validated (size * jsPropertyEnumSize)
+	// 2. JSPropertyEnum layout matches C struct layout
+	// 3. Memory lifetime is managed by context.FreeHandle()
+	entries := unsafe.Slice((*JSPropertyEnum)(unsafe.Pointer(&bytes[0])), entriesCount)
 
 	property := make([]OwnProperty, len(entries))
 
@@ -578,7 +597,7 @@ func (v *Value) String() string {
 	return result.handle.String()
 }
 
-// JSONString returns the JSON string representation of the value.
+// JSONStringify returns the JSON string representation of the value.
 func (v *Value) JSONStringify() (_ string, err error) {
 	defer func() {
 		r := AnyToError(recover())
@@ -593,7 +612,7 @@ func (v *Value) JSONStringify() (_ string, err error) {
 	return result.handle.String(), nil
 }
 
-// Date returns the date value of the value.
+// DateTime returns the date value of the value.
 func (v *Value) DateTime(tzs ...string) *time.Time {
 	var loc *time.Location
 	if len(tzs) > 0 && tzs[0] != "" {
@@ -628,8 +647,8 @@ func (v *Value) Bool() bool {
 	return v.Call("JS_ToBool", v.Ctx(), v.Raw()).handle.Bool()
 }
 
-// in c int is 32 bit, but in go it is depends on the architecture
 // Int32 returns the int32 value of the value.
+// in c int is 32 bit, but in go it is depends on the architecture.
 func (v *Value) Int32() int32 {
 	return v.Call("QJS_ToInt32", v.Ctx(), v.Raw()).handle.Int32()
 }
@@ -686,7 +705,7 @@ func (v *Value) ToSet() *Set {
 	return NewSet(v)
 }
 
-// Call Class Constructor.
+// New creates a new instance of the value as a constructor with the given arguments.
 func (v *Value) New(args ...*Value) *Value {
 	return v.CallConstructor(args...)
 }

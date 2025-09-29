@@ -75,7 +75,7 @@ target_link_options(qjsextra PRIVATE
     "LINKER:--export=JS_SetPropertyStr"
     # "LINKER:--export=JS_Call"
     "LINKER:--export=JS_CallConstructor"
-    "LINKER:--export=QJS_CreateProxyFunction"
+    "LINKER:--export=QJS_CreateFunctionProxy"
     "LINKER:--export=QJS_NewInt64"
     "LINKER:--export=QJS_NewUint32"
     "LINKER:--export=QJS_NewInt32"
