@@ -7,6 +7,7 @@
   <a href="https://goreportcard.com/report/github.com/fastschema/qjs" target="_blank" rel="noopener">
     <img src="https://goreportcard.com/badge/github.com/fastschema/qjs" alt="go report card" />
   </a>
+<a href="https://app.fossa.com/projects/git%2Bgithub.com%2Ffastschema%2Fqjs?ref=badge_shield" alt="FOSSA Status"><img src="https://app.fossa.com/api/projects/git%2Bgithub.com%2Ffastschema%2Fqjs.svg?type=shield"/></a>
   <a href="https://codecov.io/gh/fastschema/qjs/branch/master" >
     <img src="https://codecov.io/gh/fastschema/qjs/branch/master/graph/badge.svg?token=yluqOtL5z0"/>
   </a>
@@ -19,6 +20,9 @@
 </p>
 
 QJS is a CGO-Free, modern, secure JavaScript runtime for Go applications, built on the powerful QuickJS engine and Wazero WebAssembly runtime. It allows you to run JavaScript code safely and efficiently, with full support for ES6+ features, async/await, and Go-JS interoperability.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ffastschema%2Fqjs.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Ffastschema%2Fqjs?ref=badge_large)
 
 ## Features
 
